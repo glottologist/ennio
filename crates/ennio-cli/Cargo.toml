@@ -1,0 +1,32 @@
+[package]
+name = "ennio-cli"
+description = "CLI binary for the Ennio agent orchestrator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "ennio"
+path = "src/main.rs"
+
+[dependencies]
+ennio-core.workspace = true
+ennio-services.workspace = true
+ennio-plugins.workspace = true
+ennio-observe.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+insta.workspace = true
+tempfile.workspace = true

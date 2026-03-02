@@ -1,0 +1,29 @@
+[package]
+name = "ennio-core"
+description = "Core traits, types, errors, and config for the Ennio agent orchestrator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+derive_more.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rstest.workspace = true
+pretty_assertions.workspace = true
+tempfile.workspace = true
+serde_yaml.workspace = true

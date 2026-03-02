@@ -1,0 +1,27 @@
+[package]
+name = "ennio-web"
+description = "Axum web API server for Ennio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ennio-core.workspace = true
+ennio-services.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rstest.workspace = true
+tokio-test.workspace = true
+wiremock.workspace = true

@@ -1,0 +1,131 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ennio-core",
+    "crates/ennio-db",
+    "crates/ennio-ledger",
+    "crates/ennio-nats",
+    "crates/ennio-ssh",
+    "crates/ennio-services",
+    "crates/ennio-plugins",
+    "crates/ennio-cli",
+    "crates/ennio-web",
+    "crates/ennio-dashboard",
+    "crates/ennio-tui",
+    "crates/ennio-observe",
+    "crates/ennio-ml",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/glottologist/ennio"
+rust-version = "1.88"
+
+[workspace.dependencies]
+# Async
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+async-nats = "0.38"
+futures = "0.3"
+
+# Web
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "json", "uuid", "migrate"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+csv = "1"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+opentelemetry = "0.28"
+opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic"] }
+opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Financial
+rust_decimal = { version = "1", features = ["serde-with-str"] }
+statrs = "0.18"
+
+# Security
+aes-gcm = "0.10"
+argon2 = "0.5"
+sha2 = "0.10"
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Config
+config = "0.15"
+etcd-client = "0.15"
+
+# Testing
+proptest = "1"
+rstest = "0.24"
+wiremock = "0.6"
+assert_cmd = "2"
+predicates = "3"
+insta = { version = "1", features = ["yaml"] }
+tokio-test = "0.4"
+tempfile = "3"
+pretty_assertions = "1"
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# SSH
+russh = "0.48"
+russh-keys = "0.48"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Misc
+uuid = { version = "1", features = ["v4", "serde"] }
+hex = "0.4"
+url = { version = "2", features = ["serde"] }
+derive_more = { version = "2", features = ["display", "from"] }
+strum = { version = "0.27", features = ["derive"] }
+bytes = "1"
+shell-escape = "0.1"
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Dashboard
+dioxus = { version = "0.6", features = ["web"] }
+
+# ML
+burn = "0.16"
+ort = "2"
+
+# Internal crates
+ennio-core = { path = "crates/ennio-core" }
+ennio-db = { path = "crates/ennio-db" }
+ennio-ledger = { path = "crates/ennio-ledger" }
+ennio-nats = { path = "crates/ennio-nats" }
+ennio-ssh = { path = "crates/ennio-ssh" }
+ennio-services = { path = "crates/ennio-services" }
+ennio-plugins = { path = "crates/ennio-plugins" }
+ennio-cli = { path = "crates/ennio-cli" }
+ennio-web = { path = "crates/ennio-web" }
+ennio-dashboard = { path = "crates/ennio-dashboard" }
+ennio-tui = { path = "crates/ennio-tui" }
+ennio-observe = { path = "crates/ennio-observe" }
+ennio-ml = { path = "crates/ennio-ml" }

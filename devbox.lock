@@ -1,0 +1,45 @@
+{
+  "lockfile_version": "1",
+  "packages": {
+    "bacon": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#bacon",
+      "source": "nixpkg"
+    },
+    "cargo-audit": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#cargo-audit",
+      "source": "nixpkg"
+    },
+    "cargo-bloat": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#cargo-bloat",
+      "source": "nixpkg"
+    },
+    "cargo-nextest": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#cargo-nextest",
+      "source": "nixpkg"
+    },
+    "cargo-udeps": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#cargo-udeps",
+      "source": "nixpkg"
+    },
+    "cargo-watch": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#cargo-watch",
+      "source": "nixpkg"
+    },
+    "github:NixOS/nixpkgs/nixpkgs-unstable": {
+      "last_modified": "2026-02-03T17:56:14Z",
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?lastModified=1770141374&narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D"
+    },
+    "libiconv": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#libiconv",
+      "source": "nixpkg"
+    },
+    "openssl": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#openssl",
+      "source": "nixpkg"
+    },
+    "pkg-config": {
+      "resolved": "github:NixOS/nixpkgs/41965737c1797c1d83cfb0b644ed0840a6220bd1?narHash=sha256-yD4K%2FvRHPwXbJf5CK3JkptBA6nFWUKNX%2FjlFp2eKEQc%3D#pkg-config",
+      "source": "nixpkg"
+    }
+  }
+}

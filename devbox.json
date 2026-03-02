@@ -1,0 +1,49 @@
+{
+    "name":"Ennio",
+    "description":"Rust agent orchestrator for parallel AI coding agents",
+  "env": {
+    "RUST_BACKTRACE": "1",
+    "RUST_LOG": "debug"
+  },
+  "packages": [
+    "openssl",
+    "libiconv",
+    "pkg-config",
+    "bacon",
+    "cargo-nextest",
+    "cargo-udeps",
+    "cargo-bloat",
+    "cargo-audit",
+    "cargo-watch"
+  ],
+  "shell": {
+    "init_hook": [
+      "cargo install flamegraph --locked",
+      "cargo install cargo-insta --locked",
+      "cargo install cargo-mutants --locked",
+      "rustc --version",
+      "cargo --version",
+      "echo 'Ennio development environment ready!'"
+    ],
+    "scripts": {
+      "build": "cargo build",
+      "test": "cargo nextest run --all",
+      "lint": "cargo clippy --all-targets --all-feature --locked -- -D warnings",
+      "fmt": "cargo fmt",
+      "check": "cargo check",
+      "release": "cargo build --release",
+      "bench": "cargo bench",
+      "flamegraph": "cargo flamegraph",
+      "snap-review": "cargo insta review",
+      "snap-test": "cargo insta test"
+    }
+  },
+    "languages": {
+        
+
+    "rust": {
+      "version": "1.88"
+    }
+  }
+
+}

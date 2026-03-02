@@ -34,6 +34,10 @@ pub enum EventType {
     ReactionTriggered,
     ReactionEscalated,
     AllComplete,
+    NodeConnected,
+    NodeDisconnected,
+    NodeLaunched,
+    NodeHealthCheck,
 }
 
 #[derive(
@@ -96,6 +100,10 @@ mod tests {
     #[case(EventType::SessionSpawned, "session_spawned")]
     #[case(EventType::PrCreated, "pr_created")]
     #[case(EventType::AllComplete, "all_complete")]
+    #[case(EventType::NodeConnected, "node_connected")]
+    #[case(EventType::NodeDisconnected, "node_disconnected")]
+    #[case(EventType::NodeLaunched, "node_launched")]
+    #[case(EventType::NodeHealthCheck, "node_health_check")]
     fn event_type_serialization(#[case] event: EventType, #[case] expected: &str) {
         let json = serde_json::to_string(&event).unwrap();
         assert_eq!(json, format!("\"{expected}\""));

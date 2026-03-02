@@ -149,6 +149,7 @@ mod tests {
             reactions: std::collections::HashMap::new(),
             agent_rules: vec![],
             max_sessions: None,
+            ssh_config: None,
         }
     }
 
@@ -163,6 +164,10 @@ mod tests {
             notifiers: vec![],
             notification_routing: std::collections::HashMap::new(),
             reactions: std::collections::HashMap::new(),
+            database_url: None,
+            nats_url: None,
+            api_token: None,
+            cors_origins: vec![],
         }
     }
 

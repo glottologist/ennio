@@ -279,6 +279,20 @@ mod tests {
         }
 
         #[test]
+        fn needs_attention_consistent_with_known_statuses(
+            status in prop::sample::select(vec![
+                "spawning", "working", "pr_open", "pr_draft",
+                "ci_passing", "ci_failed", "ci_fix_sent", "ci_fix_failed",
+                "review_pending", "changes_requested", "approved",
+                "merge_conflicts", "merged", "done", "exited", "killed",
+            ])
+        ) {
+            let s = make_session(status, None);
+            let expected = ATTENTION_STATUSES.contains(&status);
+            prop_assert_eq!(s.needs_attention(), expected);
+        }
+
+        #[test]
         fn is_terminal_consistent_with_known_statuses(
             status in prop::sample::select(vec![
                 "spawning", "working", "pr_open", "pr_draft",
@@ -287,8 +301,8 @@ mod tests {
                 "merge_conflicts", "merged", "done", "exited", "killed",
             ])
         ) {
-            let s = make_session(&status, None);
-            let expected = TERMINAL_STATUSES.contains(&&*status);
+            let s = make_session(status, None);
+            let expected = TERMINAL_STATUSES.contains(&status);
             prop_assert_eq!(s.is_terminal(), expected);
         }
 

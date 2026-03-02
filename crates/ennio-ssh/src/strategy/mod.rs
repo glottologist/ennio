@@ -49,5 +49,6 @@ pub fn create_strategy(strategy: SshStrategy) -> Box<dyn SshSessionStrategy> {
         SshStrategy::Tmux => Box::new(TmuxStrategy::new()),
         SshStrategy::Tmate => Box::new(TmateStrategy::new()),
         SshStrategy::RemoteControl => Box::new(RemoteControlStrategy::new()),
+        SshStrategy::Node => Box::new(TmuxStrategy::new()),
     }
 }

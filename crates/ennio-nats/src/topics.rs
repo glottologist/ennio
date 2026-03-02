@@ -64,6 +64,14 @@ pub fn dashboard_topic(action: &str) -> Result<String, NatsError> {
     Ok([PREFIX, "dashboard", action].join("."))
 }
 
+pub fn node_topic(host: &str, action: &str) -> Result<String, NatsError> {
+    build_topic(PREFIX, "node", host, action)
+}
+
+pub fn node_subscribe_pattern(host: &str) -> Result<String, NatsError> {
+    subscribe_pattern(PREFIX, "node", host)
+}
+
 pub fn session_subscribe_pattern(project_id: &str) -> Result<String, NatsError> {
     subscribe_pattern(PREFIX, "sessions", project_id)
 }
@@ -116,6 +124,10 @@ pub fn topic_for_event_type(event_type: EventType, project_id: &str) -> Result<S
         EventType::ReactionTriggered => reactions_topic(project_id, "triggered"),
         EventType::ReactionEscalated => reactions_topic(project_id, "escalated"),
         EventType::AllComplete => lifecycle_topic("all_complete"),
+        EventType::NodeConnected => node_topic(project_id, "connected"),
+        EventType::NodeDisconnected => node_topic(project_id, "disconnected"),
+        EventType::NodeLaunched => node_topic(project_id, "launched"),
+        EventType::NodeHealthCheck => node_topic(project_id, "health_check"),
     }
 }
 
@@ -240,6 +252,10 @@ mod tests {
                 EventType::MergeCompleted,
                 EventType::ReactionTriggered,
                 EventType::ReactionEscalated,
+                EventType::NodeConnected,
+                EventType::NodeDisconnected,
+                EventType::NodeLaunched,
+                EventType::NodeHealthCheck,
             ];
 
             for event_type in event_types {
@@ -295,5 +311,32 @@ mod tests {
     fn all_complete_maps_to_lifecycle() {
         let topic = topic_for_event_type(EventType::AllComplete, "any-project").unwrap();
         assert_eq!(topic, "ennio.lifecycle.all_complete");
+    }
+
+    #[test]
+    fn node_topic_has_four_segments() {
+        let topic = node_topic("remote-host", "connected").unwrap();
+        assert_eq!(topic, "ennio.node.remote-host.connected");
+    }
+
+    #[test]
+    fn node_subscribe_pattern_ends_with_wildcard() {
+        let pattern = node_subscribe_pattern("remote-host").unwrap();
+        assert_eq!(pattern, "ennio.node.remote-host.*");
+    }
+
+    #[test]
+    fn node_event_types_map_correctly() {
+        let topic = topic_for_event_type(EventType::NodeConnected, "my-host").unwrap();
+        assert_eq!(topic, "ennio.node.my-host.connected");
+
+        let topic = topic_for_event_type(EventType::NodeDisconnected, "my-host").unwrap();
+        assert_eq!(topic, "ennio.node.my-host.disconnected");
+
+        let topic = topic_for_event_type(EventType::NodeLaunched, "my-host").unwrap();
+        assert_eq!(topic, "ennio.node.my-host.launched");
+
+        let topic = topic_for_event_type(EventType::NodeHealthCheck, "my-host").unwrap();
+        assert_eq!(topic, "ennio.node.my-host.health_check");
     }
 }

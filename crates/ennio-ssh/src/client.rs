@@ -38,6 +38,15 @@ pub struct SshClient {
     config: SshConfig,
 }
 
+impl Clone for SshClient {
+    fn clone(&self) -> Self {
+        Self {
+            handle: Arc::clone(&self.handle),
+            config: self.config.clone(), // clone: SshConfig is pure data needed for reconnect
+        }
+    }
+}
+
 impl SshClient {
     pub async fn connect(config: &SshConfig) -> Result<Self, SshError> {
         let handle = establish_connection(config).await?;
@@ -122,6 +131,30 @@ impl SshClient {
             command: command.to_string(),
             message: format!("failed to send eof: {e}"),
         })?;
+
+        Ok(())
+    }
+
+    pub async fn forward_local_port(
+        &self,
+        local_port: u16,
+        remote_host: &str,
+        remote_port: u16,
+    ) -> Result<(), SshError> {
+        let handle = self.handle.lock().await;
+        handle
+            .channel_open_direct_tcpip(
+                remote_host,
+                u32::from(remote_port),
+                "127.0.0.1",
+                u32::from(local_port),
+            )
+            .await
+            .map_err(|e| SshError::Tunnel {
+                message: format!(
+                    "failed to open tunnel 127.0.0.1:{local_port} -> {remote_host}:{remote_port}: {e}"
+                ),
+            })?;
 
         Ok(())
     }

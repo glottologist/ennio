@@ -5,21 +5,27 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::PgPool;
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use ennio_core::agent::{AgentLaunchConfig, PromptDelivery, WorkspaceHooksConfig};
-use ennio_core::config::{OrchestratorConfig, ProjectConfig};
+use ennio_core::config::{
+    OrchestratorConfig, ProjectConfig, SshConnectionConfig, SshStrategyConfig,
+};
 use ennio_core::error::EnnioError;
 use ennio_core::event::{EventPriority, EventType, OrchestratorEvent};
 use ennio_core::id::{EventId, ProjectId, SessionId};
 use ennio_core::lifecycle::{CleanupDetail, CleanupResult, SessionManager, SpawnRequest};
 use ennio_core::paths;
-use ennio_core::runtime::{RuntimeCreateConfig, RuntimeHandle};
+use ennio_core::runtime::{Runtime, RuntimeCreateConfig, RuntimeHandle};
 use ennio_core::session::{Session, SessionStatus};
 use ennio_core::tracker::Issue;
-use ennio_core::workspace::WorkspaceCreateConfig;
+use ennio_core::workspace::{Workspace, WorkspaceCreateConfig};
 use ennio_db::repo::{events, sessions};
 use ennio_nats::EventPublisher;
+use ennio_ssh::config::SshConfig;
+use ennio_ssh::strategy::SshSessionStrategy;
+use ennio_ssh::{RemoteNode, SshClient, SshRuntime, create_strategy};
 
 use crate::event_bus::EventBus;
 use crate::registry::PluginRegistry;
@@ -30,6 +36,7 @@ pub struct DefaultSessionManager {
     config: Arc<OrchestratorConfig>,
     pool: PgPool,
     publisher: Arc<EventPublisher>,
+    node_connections: RwLock<HashMap<String, RemoteNode>>,
 }
 
 impl DefaultSessionManager {
@@ -46,6 +53,7 @@ impl DefaultSessionManager {
             config,
             pool,
             publisher,
+            node_connections: RwLock::new(HashMap::new()),
         }
     }
 
@@ -136,14 +144,78 @@ impl DefaultSessionManager {
         });
     }
 
+    fn is_node_strategy(ssh_config: &SshConnectionConfig) -> bool {
+        ssh_config.strategy == SshStrategyConfig::Node
+    }
+
+    async fn get_or_connect_node(
+        &self,
+        ssh_config: &SshConnectionConfig,
+    ) -> Result<(), EnnioError> {
+        let host = &ssh_config.host;
+        {
+            let connections = self.node_connections.read().await;
+            if connections.contains_key(host) {
+                return Ok(());
+            }
+        }
+
+        let node_config = ssh_config
+            .node_config
+            .as_ref()
+            .cloned() // clone: NodeConnectionConfig is small pure data
+            .unwrap_or_default();
+
+        let ssh_conf: SshConfig = ssh_config.clone().into(); // clone: SshConnectionConfig is pure data needed for conversion
+        let client = SshClient::connect(&ssh_conf).await?;
+
+        let node = RemoteNode::connect(&client, &node_config, host)
+            .await
+            .map_err(|e| EnnioError::Node {
+                host: host.to_owned(),
+                message: e.to_string(),
+            })?;
+
+        let mut connections = self.node_connections.write().await;
+        connections.insert(host.to_owned(), node);
+
+        Ok(())
+    }
+
+    async fn build_ssh_client(
+        ssh_config: &SshConnectionConfig,
+    ) -> Result<(SshClient, Box<dyn SshSessionStrategy>), EnnioError> {
+        let ssh_conf: SshConfig = ssh_config.clone().into(); // clone: SshConnectionConfig is pure data needed for conversion
+        let strategy = create_strategy(ssh_config.strategy.into());
+        let client = SshClient::connect(&ssh_conf).await?;
+        Ok((client, strategy))
+    }
+
+    fn build_remote_workspace(
+        client: &SshClient,
+        project: &ProjectConfig,
+        workspace_name: &str,
+    ) -> Result<Box<dyn Workspace>, EnnioError> {
+        match workspace_name {
+            "worktree" => Ok(Box::new(ennio_ssh::SshWorktreeWorkspace::new(
+                client.clone(), // clone: SshClient uses Arc internally, cheap ref count bump
+                project.path.to_string_lossy().into_owned(),
+            ))),
+            "clone" => Ok(Box::new(ennio_ssh::SshCloneWorkspace::new(
+                client.clone(), // clone: SshClient uses Arc internally, cheap ref count bump
+            ))),
+            other => Err(EnnioError::Config {
+                message: format!("unsupported remote workspace type: {other}"),
+            }),
+        }
+    }
+
     async fn create_workspace(
         &self,
         project: &ProjectConfig,
         request: &SpawnRequest<'_>,
         session_id: &SessionId,
     ) -> Result<PathBuf, EnnioError> {
-        let workspace_name = self.resolve_workspace_name(project);
-        let workspace_plugin = self.registry.get_workspace(workspace_name)?;
         let ws_config = WorkspaceCreateConfig {
             project_id: request.project_id,
             project,
@@ -152,11 +224,43 @@ impl DefaultSessionManager {
         };
 
         info!(session_id = %session_id, "creating workspace");
-        let workspace_path = workspace_plugin.create(&ws_config).await?;
-        workspace_plugin
-            .post_create(&workspace_path, &ws_config)
-            .await?;
-        Ok(workspace_path)
+
+        if let Some(ssh_config) = &project.ssh_config {
+            if Self::is_node_strategy(ssh_config) {
+                self.get_or_connect_node(ssh_config).await?;
+                let workspace_name = self.resolve_workspace_name(project);
+                let mut connections = self.node_connections.write().await;
+                let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
+                    EnnioError::Node {
+                        host: ssh_config.host.clone(), // clone: building error with host context
+                        message: "node connection lost".to_owned(),
+                    }
+                })?;
+                let workspace_path = node
+                    .create_workspace(&ws_config, workspace_name)
+                    .await
+                    .map_err(|e| EnnioError::Node {
+                        host: ssh_config.host.clone(), // clone: building error with host context
+                        message: e.to_string(),
+                    })?;
+                return Ok(workspace_path);
+            }
+
+            let (client, _strategy) = Self::build_ssh_client(ssh_config).await?;
+            let workspace_name = self.resolve_workspace_name(project);
+            let remote_ws = Self::build_remote_workspace(&client, project, workspace_name)?;
+            let workspace_path = remote_ws.create(&ws_config).await?;
+            remote_ws.post_create(&workspace_path, &ws_config).await?;
+            Ok(workspace_path)
+        } else {
+            let workspace_name = self.resolve_workspace_name(project);
+            let workspace_plugin = self.registry.get_workspace(workspace_name)?;
+            let workspace_path = workspace_plugin.create(&ws_config).await?;
+            workspace_plugin
+                .post_create(&workspace_path, &ws_config)
+                .await?;
+            Ok(workspace_path)
+        }
     }
 
     async fn fetch_issue(
@@ -191,8 +295,6 @@ impl DefaultSessionManager {
             .unwrap_or_else(|| paths::session_prefix_from_name(&project.name));
         let tmux_session_name = paths::tmux_name(config_hash, &prefix, 0);
 
-        let runtime_name = self.resolve_runtime_name(project);
-        let runtime_plugin = self.registry.get_runtime(runtime_name)?;
         let runtime_config = RuntimeCreateConfig {
             // clone: SessionId must be owned by RuntimeCreateConfig
             session_id: session_id.clone(),
@@ -204,8 +306,158 @@ impl DefaultSessionManager {
         };
 
         info!(session_id = %session_id, "creating runtime");
-        let runtime_handle = runtime_plugin.create(&runtime_config).await?;
-        Ok((runtime_handle, tmux_session_name))
+
+        if let Some(ssh_config) = &project.ssh_config {
+            if Self::is_node_strategy(ssh_config) {
+                self.get_or_connect_node(ssh_config).await?;
+                let mut connections = self.node_connections.write().await;
+                let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
+                    EnnioError::Node {
+                        host: ssh_config.host.clone(), // clone: building error with host context
+                        message: "node connection lost".to_owned(),
+                    }
+                })?;
+                let runtime_handle =
+                    node.create_runtime(&runtime_config)
+                        .await
+                        .map_err(|e| EnnioError::Node {
+                            host: ssh_config.host.clone(), // clone: building error with host context
+                            message: e.to_string(),
+                        })?;
+                return Ok((runtime_handle, tmux_session_name));
+            }
+
+            let (client, strategy) = Self::build_ssh_client(ssh_config).await?;
+            let ssh_runtime = SshRuntime::new(client, strategy);
+            let runtime_handle = ssh_runtime.create(&runtime_config).await?;
+            Ok((runtime_handle, tmux_session_name))
+        } else {
+            let runtime_name = self.resolve_runtime_name(project);
+            let runtime_plugin = self.registry.get_runtime(runtime_name)?;
+            let runtime_handle = runtime_plugin.create(&runtime_config).await?;
+            Ok((runtime_handle, tmux_session_name))
+        }
+    }
+
+    async fn kill_local(
+        &self,
+        session_id: &SessionId,
+        session: &Session,
+        project: &ProjectConfig,
+    ) -> Result<(), EnnioError> {
+        if let Some(ref handle) = session.runtime_handle {
+            let runtime_name = self.resolve_runtime_name(project);
+            let runtime_plugin = self.registry.get_runtime(runtime_name)?;
+            if let Err(e) = runtime_plugin.destroy(handle).await {
+                warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "failed to destroy runtime, continuing with kill"
+                );
+            }
+        }
+
+        if let Some(ref ws_path) = session.workspace_path {
+            let workspace_name = self.resolve_workspace_name(project);
+            let workspace_plugin = self.registry.get_workspace(workspace_name)?;
+            if let Err(e) = workspace_plugin.destroy(ws_path).await {
+                warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "failed to destroy workspace, continuing with kill"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn kill_remote(
+        &self,
+        session_id: &SessionId,
+        session: &Session,
+        project: &ProjectConfig,
+    ) -> Result<(), EnnioError> {
+        let ssh_config = project
+            .ssh_config
+            .as_ref()
+            .ok_or_else(|| EnnioError::Config {
+                message: "kill_remote called on non-remote project".to_owned(),
+            })?;
+
+        if Self::is_node_strategy(ssh_config) {
+            return self
+                .kill_remote_via_node(session_id, session, ssh_config)
+                .await;
+        }
+
+        let (client, strategy) = Self::build_ssh_client(ssh_config).await?;
+
+        if let Some(ref handle) = session.runtime_handle {
+            let ssh_runtime = SshRuntime::new(
+                client.clone(), // clone: SshClient uses Arc internally, cheap ref count bump
+                strategy,
+            );
+            if let Err(e) = ssh_runtime.destroy(handle).await {
+                warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "failed to destroy remote runtime, continuing with kill"
+                );
+            }
+        }
+
+        if let Some(ref ws_path) = session.workspace_path {
+            let workspace_name = self.resolve_workspace_name(project);
+            let remote_ws = Self::build_remote_workspace(&client, project, workspace_name)?;
+            if let Err(e) = remote_ws.destroy(ws_path).await {
+                warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "failed to destroy remote workspace, continuing with kill"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn kill_remote_via_node(
+        &self,
+        session_id: &SessionId,
+        session: &Session,
+        ssh_config: &SshConnectionConfig,
+    ) -> Result<(), EnnioError> {
+        self.get_or_connect_node(ssh_config).await?;
+        let mut connections = self.node_connections.write().await;
+        let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
+            EnnioError::Node {
+                host: ssh_config.host.clone(), // clone: building error with host context
+                message: "node connection lost".to_owned(),
+            }
+        })?;
+
+        if let Some(ref handle) = session.runtime_handle {
+            if let Err(e) = node.destroy_runtime(handle).await {
+                warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "failed to destroy node runtime, continuing with kill"
+                );
+            }
+        }
+
+        if let Some(ref ws_path) = session.workspace_path {
+            if let Err(e) = node.destroy_workspace(&ws_path.to_string_lossy()).await {
+                warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "failed to destroy node workspace, continuing with kill"
+                );
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -241,15 +493,19 @@ impl SessionManager for DefaultSessionManager {
         let launch_command = agent_plugin.get_launch_command(&agent_launch_config);
         let env = agent_plugin.get_environment(&agent_launch_config);
 
-        let data_dir = paths::data_dir(&config_hash, request.project_id.as_str());
-        let hooks_config = WorkspaceHooksConfig {
-            session_id: &session_id,
-            data_dir: &data_dir,
-            project_config: project,
-        };
-        agent_plugin
-            .setup_workspace_hooks(&workspace_path, &hooks_config)
-            .await?;
+        if project.is_remote() {
+            warn!("skipping workspace hooks for remote project — hooks write local files");
+        } else {
+            let data_dir = paths::data_dir(&config_hash, request.project_id.as_str());
+            let hooks_config = WorkspaceHooksConfig {
+                session_id: &session_id,
+                data_dir: &data_dir,
+                project_config: project,
+            };
+            agent_plugin
+                .setup_workspace_hooks(&workspace_path, &hooks_config)
+                .await?;
+        }
 
         let (runtime_handle, tmux_session_name) = self
             .create_runtime(
@@ -329,9 +585,6 @@ impl SessionManager for DefaultSessionManager {
 
         let project = self.find_project(&session.project_id)?;
 
-        let workspace_name = self.resolve_workspace_name(project);
-        let workspace_plugin = self.registry.get_workspace(workspace_name)?;
-
         if let Some(ref ws_path) = session.workspace_path {
             let ws_config = WorkspaceCreateConfig {
                 project_id: &session.project_id,
@@ -339,16 +592,23 @@ impl SessionManager for DefaultSessionManager {
                 session_id,
                 branch: session.branch.as_deref(),
             };
-            workspace_plugin.restore(ws_path, &ws_config).await?;
+
+            if let Some(ssh_config) = &project.ssh_config {
+                let (client, _strategy) = Self::build_ssh_client(ssh_config).await?;
+                let workspace_name = self.resolve_workspace_name(project);
+                let remote_ws = Self::build_remote_workspace(&client, project, workspace_name)?;
+                remote_ws.restore(ws_path, &ws_config).await?;
+            } else {
+                let workspace_name = self.resolve_workspace_name(project);
+                let workspace_plugin = self.registry.get_workspace(workspace_name)?;
+                workspace_plugin.restore(ws_path, &ws_config).await?;
+            }
         }
 
         let agent_name = self.resolve_agent_name(project);
         let agent_plugin = self.registry.get_agent(agent_name)?;
 
         let restore_command = agent_plugin.get_restore_command(&session, project).await?;
-
-        let runtime_name = self.resolve_runtime_name(project);
-        let runtime_plugin = self.registry.get_runtime(runtime_name)?;
 
         let cwd = session
             .workspace_path
@@ -369,7 +629,15 @@ impl SessionManager for DefaultSessionManager {
                 .unwrap_or_else(|| session_id.to_string()),
         };
 
-        let runtime_handle = runtime_plugin.create(&runtime_config).await?;
+        let runtime_handle = if let Some(ssh_config) = &project.ssh_config {
+            let (client, strategy) = Self::build_ssh_client(ssh_config).await?;
+            let ssh_runtime = SshRuntime::new(client, strategy);
+            ssh_runtime.create(&runtime_config).await?
+        } else {
+            let runtime_name = self.resolve_runtime_name(project);
+            let runtime_plugin = self.registry.get_runtime(runtime_name)?;
+            runtime_plugin.create(&runtime_config).await?
+        };
 
         sessions::update_status(&self.pool, session_id, SessionStatus::Working)
             .await
@@ -425,28 +693,10 @@ impl SessionManager for DefaultSessionManager {
 
         let project = self.find_project(&session.project_id)?;
 
-        if let Some(ref handle) = session.runtime_handle {
-            let runtime_name = self.resolve_runtime_name(project);
-            let runtime_plugin = self.registry.get_runtime(runtime_name)?;
-            if let Err(e) = runtime_plugin.destroy(handle).await {
-                warn!(
-                    session_id = %session_id,
-                    error = %e,
-                    "failed to destroy runtime, continuing with kill"
-                );
-            }
-        }
-
-        if let Some(ref ws_path) = session.workspace_path {
-            let workspace_name = self.resolve_workspace_name(project);
-            let workspace_plugin = self.registry.get_workspace(workspace_name)?;
-            if let Err(e) = workspace_plugin.destroy(ws_path).await {
-                warn!(
-                    session_id = %session_id,
-                    error = %e,
-                    "failed to destroy workspace, continuing with kill"
-                );
-            }
+        if project.is_remote() {
+            self.kill_remote(session_id, &session, project).await?;
+        } else {
+            self.kill_local(session_id, &session, project).await?;
         }
 
         sessions::update_status(&self.pool, session_id, SessionStatus::Killed)
@@ -562,10 +812,33 @@ impl SessionManager for DefaultSessionManager {
         })?;
 
         let project = self.find_project(&session.project_id)?;
-        let runtime_name = self.resolve_runtime_name(project);
-        let runtime_plugin = self.registry.get_runtime(runtime_name)?;
 
-        runtime_plugin.send_message(handle, message).await?;
+        if let Some(ssh_config) = &project.ssh_config {
+            if Self::is_node_strategy(ssh_config) {
+                self.get_or_connect_node(ssh_config).await?;
+                let mut connections = self.node_connections.write().await;
+                let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
+                    EnnioError::Node {
+                        host: ssh_config.host.clone(), // clone: building error with host context
+                        message: "node connection lost".to_owned(),
+                    }
+                })?;
+                node.send_message(handle, message)
+                    .await
+                    .map_err(|e| EnnioError::Node {
+                        host: ssh_config.host.clone(), // clone: building error with host context
+                        message: e.to_string(),
+                    })?;
+            } else {
+                let (client, strategy) = Self::build_ssh_client(ssh_config).await?;
+                let ssh_runtime = SshRuntime::new(client, strategy);
+                ssh_runtime.send_message(handle, message).await?;
+            }
+        } else {
+            let runtime_name = self.resolve_runtime_name(project);
+            let runtime_plugin = self.registry.get_runtime(runtime_name)?;
+            runtime_plugin.send_message(handle, message).await?;
+        }
 
         debug!(session_id = %session_id, "message sent to session");
         Ok(())

@@ -13,15 +13,21 @@ path = "src/main.rs"
 
 [dependencies]
 ennio-core.workspace = true
+ennio-db.workspace = true
+ennio-nats.workspace = true
 ennio-services.workspace = true
 ennio-plugins.workspace = true
 ennio-observe.workspace = true
+ennio-ssh.workspace = true
+ennio-web.workspace = true
+axum.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
+sqlx.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 

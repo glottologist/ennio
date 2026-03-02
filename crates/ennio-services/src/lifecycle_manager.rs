@@ -131,12 +131,30 @@ impl DefaultLifecycleManager {
                 id: session.project_id.to_string(),
             })?;
 
+        let is_node_strategy = project
+            .ssh_config
+            .as_ref()
+            .is_some_and(|ssh| ssh.strategy == ennio_core::config::SshStrategyConfig::Node);
+
         let runtime_name = project
             .runtime
             .as_deref()
             .unwrap_or(self.config.defaults.runtime.as_str());
 
-        let runtime_alive = if let Some(ref handle) = session.runtime_handle {
+        let runtime_alive = if is_node_strategy {
+            if session.runtime_handle.is_some() {
+                self.emit_event(
+                    EventType::NodeHealthCheck,
+                    EventPriority::Info,
+                    &session.id,
+                    &session.project_id,
+                    "node health check via session manager",
+                );
+                true
+            } else {
+                false
+            }
+        } else if let Some(ref handle) = session.runtime_handle {
             let runtime = self.registry.get_runtime(runtime_name)?;
             runtime.is_alive(handle).await.unwrap_or(false)
         } else {

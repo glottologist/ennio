@@ -99,6 +99,109 @@ impl Default for PluginRegistry {
     }
 }
 
+pub fn register_default_plugins(
+    config: &ennio_core::config::OrchestratorConfig,
+) -> Result<PluginRegistry, EnnioError> {
+    use ennio_plugins::agent::{ClaudeCodeAgent, aider_agent, codex_agent, opencode_agent};
+    use ennio_plugins::notifier::{DesktopNotifier, SlackNotifier, WebhookNotifier};
+    use ennio_plugins::runtime::{ProcessRuntime, TmuxRuntime};
+    use ennio_plugins::scm::GitHubScm;
+    use ennio_plugins::terminal::WebTerminal;
+    use ennio_plugins::tracker::{GitHubTracker, LinearTracker};
+    use ennio_plugins::workspace::{CloneWorkspace, WorktreeWorkspace};
+
+    let mut registry = PluginRegistry::new();
+
+    registry.register_runtime(Arc::new(TmuxRuntime::new()) as Arc<dyn Runtime>)?;
+    registry.register_runtime(Arc::new(ProcessRuntime::new()) as Arc<dyn Runtime>)?;
+
+    registry.register_agent(Arc::new(ClaudeCodeAgent::new()) as Arc<dyn Agent>)?;
+    registry.register_agent(Arc::new(aider_agent()) as Arc<dyn Agent>)?;
+    registry.register_agent(Arc::new(codex_agent()) as Arc<dyn Agent>)?;
+    registry.register_agent(Arc::new(opencode_agent()) as Arc<dyn Agent>)?;
+
+    registry.register_workspace(Arc::new(WorktreeWorkspace::new()) as Arc<dyn Workspace>)?;
+    registry.register_workspace(Arc::new(CloneWorkspace::new()) as Arc<dyn Workspace>)?;
+
+    let terminal_url = format!("http://127.0.0.1:{}", config.terminal_port);
+    registry.register_terminal(Arc::new(WebTerminal::new(terminal_url)) as Arc<dyn Terminal>)?;
+
+    for notifier_config in &config.notifiers {
+        let notifier: Arc<dyn Notifier> = match notifier_config.plugin.as_str() {
+            "desktop" => Arc::new(DesktopNotifier::new()),
+            "slack" => {
+                let webhook_url = notifier_config
+                    .config
+                    .get("webhook_url")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| EnnioError::Config {
+                        message: format!(
+                            "slack notifier '{}' missing 'webhook_url' config",
+                            notifier_config.name
+                        ),
+                    })?;
+                Arc::new(SlackNotifier::new(webhook_url))
+            }
+            "webhook" => {
+                let url = notifier_config
+                    .config
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| EnnioError::Config {
+                        message: format!(
+                            "webhook notifier '{}' missing 'url' config",
+                            notifier_config.name
+                        ),
+                    })?;
+                Arc::new(WebhookNotifier::new(url))
+            }
+            other => {
+                return Err(EnnioError::Config {
+                    message: format!("unknown notifier plugin: {other}"),
+                });
+            }
+        };
+        registry.register_notifier(notifier)?;
+    }
+
+    let mut has_github_scm = false;
+    let mut has_github_tracker = false;
+    let mut has_linear_tracker = false;
+
+    for project in &config.projects {
+        if let Some(scm_config) = &project.scm_config {
+            if scm_config.plugin == "github" && !has_github_scm {
+                let token = std::env::var("GITHUB_TOKEN").map_err(|_| EnnioError::Config {
+                    message: "GITHUB_TOKEN env var required for github SCM plugin".to_owned(),
+                })?;
+                registry.register_scm(Arc::new(GitHubScm::new(token)) as Arc<dyn Scm>)?;
+                has_github_scm = true;
+            }
+        }
+
+        if let Some(tracker_config) = &project.tracker_config {
+            match tracker_config.plugin.as_str() {
+                "github" if !has_github_tracker => {
+                    let token = std::env::var("GITHUB_TOKEN").map_err(|_| EnnioError::Config {
+                        message: "GITHUB_TOKEN env var required for github tracker plugin"
+                            .to_owned(),
+                    })?;
+                    registry
+                        .register_tracker(Arc::new(GitHubTracker::new(token)) as Arc<dyn Tracker>)?;
+                    has_github_tracker = true;
+                }
+                "linear" if !has_linear_tracker => {
+                    registry.register_tracker(Arc::new(LinearTracker::new()) as Arc<dyn Tracker>)?;
+                    has_linear_tracker = true;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok(registry)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -324,5 +427,94 @@ mod tests {
         assert!(names.contains(&"stub-runtime"));
         assert!(names.contains(&"stub-agent"));
         assert!(names.contains(&"stub-workspace"));
+    }
+
+    fn minimal_orchestrator_config() -> ennio_core::config::OrchestratorConfig {
+        ennio_core::config::OrchestratorConfig {
+            projects: vec![],
+            notifiers: vec![],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn register_default_plugins_returns_base_set() {
+        let config = minimal_orchestrator_config();
+        let registry = register_default_plugins(&config).unwrap();
+        let plugins = registry.list_plugins();
+
+        let names: Vec<&str> = plugins.iter().map(|p| p.name.as_str()).collect();
+
+        assert!(names.contains(&"tmux"));
+        assert!(names.contains(&"process"));
+        assert!(names.contains(&"claude-code"));
+        assert!(names.contains(&"aider"));
+        assert!(names.contains(&"codex"));
+        assert!(names.contains(&"opencode"));
+        assert!(names.contains(&"worktree"));
+        assert!(names.contains(&"clone"));
+        assert!(names.contains(&"web"));
+
+        assert_eq!(plugins.len(), 9);
+    }
+
+    #[test]
+    fn register_default_plugins_unknown_notifier_errors() {
+        let config = ennio_core::config::OrchestratorConfig {
+            notifiers: vec![ennio_core::config::NotifierConfig {
+                name: "bad".to_owned(),
+                plugin: "nonexistent".to_owned(),
+                config: HashMap::new(),
+            }],
+            ..Default::default()
+        };
+
+        let result = register_default_plugins(&config);
+        let err = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected error for unknown notifier plugin"),
+        };
+        assert!(err.contains("unknown notifier plugin"), "got: {err}");
+    }
+
+    #[test]
+    fn register_default_plugins_desktop_notifier() {
+        let config = ennio_core::config::OrchestratorConfig {
+            notifiers: vec![ennio_core::config::NotifierConfig {
+                name: "my-desktop".to_owned(),
+                plugin: "desktop".to_owned(),
+                config: HashMap::new(),
+            }],
+            ..Default::default()
+        };
+
+        let registry = register_default_plugins(&config).unwrap();
+        let plugins = registry.list_plugins();
+        let names: Vec<&str> = plugins.iter().map(|p| p.name.as_str()).collect();
+
+        assert!(names.contains(&"desktop"));
+        assert_eq!(plugins.len(), 10);
+    }
+
+    #[test]
+    fn register_default_plugins_slack_missing_webhook_url_errors() {
+        let config = ennio_core::config::OrchestratorConfig {
+            notifiers: vec![ennio_core::config::NotifierConfig {
+                name: "my-slack".to_owned(),
+                plugin: "slack".to_owned(),
+                config: HashMap::new(),
+            }],
+            ..Default::default()
+        };
+
+        let result = register_default_plugins(&config);
+        let err = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected error for missing webhook_url"),
+        };
+        assert!(
+            err.contains("webhook_url"),
+            "expected webhook_url error, got: {err}"
+        );
     }
 }

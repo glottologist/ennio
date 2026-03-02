@@ -30,7 +30,7 @@ impl fmt::Display for OutputFormat {
     }
 }
 
-pub fn print_json<T: Serialize>(data: &T) -> anyhow::Result<()> {
+pub fn print_json<T: Serialize + ?Sized>(data: &T) -> anyhow::Result<()> {
     let json = serde_json::to_string_pretty(data)?;
     println!("{json}");
     Ok(())

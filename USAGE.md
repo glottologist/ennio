@@ -117,6 +117,17 @@ projects:
       Focus on writing tests first.
       Do not modify the database schema.
 
+    ssh_config:                # Enable remote execution via SSH
+      host: remote.example.com
+      port: 22
+      username: deploy
+      auth:
+        type: agent            # SSH agent forwarding (recommended)
+      strategy: tmux           # tmux | tmate | remote_control
+      connection_timeout: 30   # Seconds
+      keepalive_interval: 15   # Seconds (optional)
+      host_key_policy: strict  # strict | accept_new | accept_all
+
     reactions:                 # Per-project reaction overrides
       ci-failed:
         enabled: true
@@ -386,49 +397,87 @@ Each reaction has configurable `retries`, `escalate_after` (seconds), and `thres
 |---|---|
 | `web` | Opens session in browser at `{base_url}/sessions/{id}`. |
 
-## SSH Remote Execution
+## Local and Remote Execution
 
-Ennio can run agents on remote machines via SSH using three strategies:
-
-### Tmux Strategy
-
-Creates a tmux session on the remote host. Best for persistent interactive sessions.
+Ennio supports both local and remote agent execution. The routing is automatic: projects **with** an `ssh_config` block run workspaces and runtimes on the remote host over SSH; projects **without** `ssh_config` run everything locally.
 
 ```yaml
-# Agent runs inside a remote tmux session
-# Messages sent via tmux send-keys / load-buffer
+projects:
+  - name: local-project       # No ssh_config -> runs locally
+    repo: git@github.com:org/local.git
+    path: /home/user/repos/local
+
+  - name: remote-project      # Has ssh_config -> runs on remote host
+    repo: git@github.com:org/remote.git
+    path: /home/deploy/repos/remote
+    ssh_config:
+      host: gpu-box.internal
+      username: deploy
+      auth:
+        type: agent
 ```
 
-### Tmate Strategy
+### What Changes for Remote Projects
 
-Uses tmate for shareable sessions with web and SSH URLs. Useful for debugging and collaboration.
+| Operation | Local | Remote (SSH) |
+|---|---|---|
+| Workspace creation | `git worktree add` / `git clone` locally | Same commands executed via SSH on the remote host |
+| Runtime creation | Local tmux session | Tmux/tmate/remote-control session on the remote host |
+| Send message | `tmux send-keys` locally | `tmux send-keys` via SSH |
+| Kill session | Destroys local runtime + workspace | Destroys remote runtime + workspace via SSH |
+| Workspace hooks | Runs locally (symlinks, post-create) | Skipped with warning (hooks write local files) |
 
-### Remote Control Strategy
+### SSH Strategies
 
-Starts `claude remote-control` on the remote host and communicates via its HTTP API. The orchestrator polls the remote for the session URL, then sends messages and reads output over HTTP.
+| Strategy | Description |
+|---|---|
+| `tmux` (default) | Creates a tmux session on the remote host. Messages sent via `send-keys` / `load-buffer`. Best for persistent interactive sessions. |
+| `tmate` | Uses tmate for shareable sessions with web and SSH URLs. Useful for debugging and collaboration. |
+| `remote_control` | Starts `claude remote-control` on the remote host and communicates via its HTTP API. The orchestrator polls for the session URL, then sends messages and reads output over HTTP. |
 
-### SSH Configuration
+### SSH Configuration Reference
 
-```rust
-host: "remote.example.com"
-port: 22
-username: "deploy"
+The `ssh_config` block on a project configures remote SSH connectivity:
+
+```yaml
+ssh_config:
+  host: remote.example.com       # Required: hostname or IP
+  port: 22                        # Default: 22
+  username: deploy                # Required: SSH username
+  auth:                           # Required: authentication method
+    type: key                     # key | agent | password
+    path: ~/.ssh/id_ed25519       # For type: key
+    passphrase: null              # For type: key (optional)
+  strategy: tmux                  # Default: tmux (tmux | tmate | remote_control)
+  connection_timeout: 30          # Default: 30 seconds
+  keepalive_interval: 15          # Optional: seconds between keepalive packets
+  host_key_policy: strict         # Default: strict (strict | accept_new | accept_all)
+```
+
+### Authentication Methods
+
+**SSH Agent** (recommended):
+```yaml
 auth:
-  # Key-based (recommended)
-  key:
-    path: /home/user/.ssh/id_ed25519
-    passphrase: null              # Optional
-
-  # Or password-based
-  password:
-    password: "..."
-
-connection_timeout: 30s
-keepalive_interval: 15s
-host_key_policy: Strict           # Strict | AcceptNew | AcceptAll
+  type: agent
 ```
 
-Passwords and passphrases are redacted from logs and serialization.
+**Key-based**:
+```yaml
+auth:
+  type: key
+  path: /home/user/.ssh/id_ed25519
+  passphrase: null                # Optional passphrase for encrypted keys
+```
+
+**Password** (not recommended):
+```yaml
+auth:
+  type: password
+  password: "..."
+```
+
+Passwords and passphrases are redacted from all logs and serialized output (Debug impl, serde serialization).
 
 ## Web API
 

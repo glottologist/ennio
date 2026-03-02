@@ -1,40 +1,22 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
+use sqlx::PgPool;
+use tokio::net::TcpListener;
+use tracing::info;
+
+use ennio_core::config::OrchestratorConfig;
+use ennio_core::id::{ProjectId, SessionId};
+use ennio_core::lifecycle::{LifecycleManager, SessionManager, SpawnRequest};
+use ennio_nats::{EventPublisher, NatsClient};
+use ennio_services::{
+    DefaultLifecycleManager, DefaultSessionManager, EventBus, apply_project_defaults,
+    find_config_file, load_config, register_default_plugins, validate_config,
+};
 
 use crate::format::{self, OutputFormat};
-
-pub async fn init(path: &str) -> Result<()> {
-    let dir = Path::new(path);
-    let config_path = dir.join("ennio.yaml");
-
-    if config_path.exists() {
-        bail!("Config file already exists: {}", config_path.display());
-    }
-
-    std::fs::create_dir_all(dir)
-        .with_context(|| format!("failed to create directory: {}", dir.display()))?;
-
-    let config = ennio_core::config::OrchestratorConfig::default();
-    let yaml = serde_yaml::to_string(&config).context("failed to serialize default config")?;
-
-    std::fs::write(&config_path, &yaml)
-        .with_context(|| format!("failed to write config: {}", config_path.display()))?;
-
-    println!("Created config: {}", config_path.display());
-    Ok(())
-}
-
-pub async fn start(_config: Option<&str>) -> Result<()> {
-    println!("Starting ennio orchestrator...");
-    Ok(())
-}
-
-pub async fn stop() -> Result<()> {
-    println!("Stopping ennio orchestrator...");
-    Ok(())
-}
 
 #[derive(Serialize)]
 struct SessionSummary {
@@ -45,11 +27,19 @@ struct SessionSummary {
     branch: String,
 }
 
-pub async fn status(_project: Option<&str>, output_format: &OutputFormat) -> Result<()> {
-    let sessions: Vec<SessionSummary> = vec![];
+fn session_to_summary(s: &ennio_core::session::Session) -> SessionSummary {
+    SessionSummary {
+        id: s.id.to_string(),
+        project: s.project_id.to_string(),
+        status: s.status.to_string(),
+        agent: s.agent_name.as_deref().unwrap_or("").to_owned(),
+        branch: s.branch.as_deref().unwrap_or("").to_owned(),
+    }
+}
 
+fn print_sessions(sessions: &[SessionSummary], output_format: &OutputFormat) -> Result<()> {
     match output_format {
-        OutputFormat::Json => format::print_json(&sessions)?,
+        OutputFormat::Json => format::print_json(sessions)?,
         OutputFormat::Table => {
             if sessions.is_empty() {
                 println!("No active sessions.");
@@ -61,7 +51,7 @@ pub async fn status(_project: Option<&str>, output_format: &OutputFormat) -> Res
                     ("AGENT", 14),
                     ("BRANCH", 24),
                 ]);
-                for s in &sessions {
+                for s in sessions {
                     format::print_table_row(&[
                         (&s.id, 24),
                         (&s.project, 20),
@@ -76,85 +66,409 @@ pub async fn status(_project: Option<&str>, output_format: &OutputFormat) -> Res
     Ok(())
 }
 
-pub async fn spawn(
-    project: &str,
-    _issue: Option<&str>,
-    _prompt: Option<&str>,
-    _branch: Option<&str>,
-    _role: Option<&str>,
+fn load_orchestrator_config(config_path: Option<&str>) -> Result<OrchestratorConfig> {
+    let path = match config_path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => find_config_file(None).map_err(|e| anyhow::anyhow!("{e}"))?,
+    };
+
+    let mut config = load_config(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    validate_config(&config).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    apply_project_defaults(&mut config);
+
+    Ok(config)
+}
+
+async fn connect_db(config: &OrchestratorConfig) -> Result<PgPool> {
+    let database_url = config
+        .resolve_database_url()
+        .context("DATABASE_URL not set (set env var or database_url in config)")?;
+
+    let pool = ennio_db::pool::connect(&database_url)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to connect to database: {e}"))?;
+
+    ennio_db::migrations::run_all(&pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to run migrations: {e}"))?;
+
+    Ok(pool)
+}
+
+async fn connect_nats(config: &OrchestratorConfig) -> Result<NatsClient> {
+    let nats_url = config.resolve_nats_url();
+
+    NatsClient::connect(&nats_url)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to connect to NATS at {nats_url}: {e}"))
+}
+
+struct ReadonlyBootstrap {
+    pool: PgPool,
+}
+
+async fn bootstrap_readonly(config_path: Option<&str>) -> Result<ReadonlyBootstrap> {
+    let config = load_orchestrator_config(config_path)?;
+    let pool = connect_db(&config).await?;
+    Ok(ReadonlyBootstrap { pool })
+}
+
+struct FullBootstrap {
+    session_manager: Arc<dyn SessionManager>,
+}
+
+async fn bootstrap_full(config_path: Option<&str>) -> Result<FullBootstrap> {
+    let config = load_orchestrator_config(config_path)?;
+    let pool = connect_db(&config).await?;
+    let nats_client = connect_nats(&config).await?;
+    let publisher = Arc::new(EventPublisher::new(nats_client));
+    let config = Arc::new(config);
+
+    let registry = register_default_plugins(&config)
+        .map_err(|e| anyhow::anyhow!("failed to register plugins: {e}"))?;
+    let registry = Arc::new(registry);
+    let event_bus = Arc::new(EventBus::new());
+
+    let session_manager: Arc<dyn SessionManager> = Arc::new(DefaultSessionManager::new(
+        Arc::clone(&registry),
+        Arc::clone(&event_bus),
+        Arc::clone(&config),
+        pool,
+        Arc::clone(&publisher),
+    ));
+
+    Ok(FullBootstrap { session_manager })
+}
+
+pub async fn init(path: &str) -> Result<()> {
+    let dir = Path::new(path);
+    let config_path = dir.join("ennio.yaml");
+
+    if config_path.exists() {
+        bail!("Config file already exists: {}", config_path.display());
+    }
+
+    std::fs::create_dir_all(dir)
+        .with_context(|| format!("failed to create directory: {}", dir.display()))?;
+
+    let config = OrchestratorConfig::default();
+    let yaml = serde_yaml::to_string(&config).context("failed to serialize default config")?;
+
+    std::fs::write(&config_path, &yaml)
+        .with_context(|| format!("failed to write config: {}", config_path.display()))?;
+
+    println!("Created config: {}", config_path.display());
+    Ok(())
+}
+
+pub async fn start(config_path: Option<&str>) -> Result<()> {
+    let config = load_orchestrator_config(config_path)?;
+    let pool = connect_db(&config).await?;
+    let nats_client = connect_nats(&config).await?;
+    let publisher = Arc::new(EventPublisher::new(nats_client.clone())); // clone: NatsClient is cheap (Arc internally)
+    let config = Arc::new(config);
+
+    let registry = register_default_plugins(&config)
+        .map_err(|e| anyhow::anyhow!("failed to register plugins: {e}"))?;
+    let registry = Arc::new(registry);
+    let event_bus = Arc::new(EventBus::new());
+
+    let session_manager: Arc<dyn SessionManager> = Arc::new(DefaultSessionManager::new(
+        Arc::clone(&registry),
+        Arc::clone(&event_bus),
+        Arc::clone(&config),
+        pool.clone(), // clone: PgPool uses Arc internally
+        Arc::clone(&publisher),
+    ));
+
+    let lifecycle_manager: Arc<DefaultLifecycleManager> = Arc::new(DefaultLifecycleManager::new(
+        Arc::clone(&registry),
+        Arc::clone(&event_bus),
+        Arc::clone(&config),
+        pool.clone(), // clone: PgPool uses Arc internally
+        Arc::clone(&publisher),
+        Arc::clone(&session_manager),
+    ));
+
+    lifecycle_manager
+        .start()
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to start lifecycle manager: {e}"))?;
+
+    let poll_lifecycle = Arc::clone(&lifecycle_manager);
+    let poll_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            if let Err(e) = poll_lifecycle.poll_sessions().await {
+                tracing::warn!("poll_sessions error: {e}");
+            }
+        }
+    });
+
+    let web_state = Arc::new(ennio_web::state::AppState {
+        session_manager: Arc::clone(&session_manager),
+        lifecycle_manager: lifecycle_manager.clone() as Arc<dyn LifecycleManager>, // clone: Arc ref count bump for trait object
+        api_token: config.api_token.clone(), // clone: small Option<String> for web state
+        cors_origins: config.cors_origins.clone(), // clone: small Vec<String> for web state
+    });
+
+    let router = ennio_web::router::create_router(web_state);
+
+    let bind_addr = format!("0.0.0.0:{}", config.port);
+    let listener = TcpListener::bind(&bind_addr)
+        .await
+        .with_context(|| format!("failed to bind to {bind_addr}"))?;
+
+    info!(port = config.port, "ennio orchestrator started");
+    println!("Ennio orchestrator listening on {bind_addr}");
+
+    let mut shutdown_sub = nats_client
+        .subscribe("ennio.commands.shutdown")
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to subscribe to shutdown topic: {e}"))?;
+
+    tokio::select! {
+        result = axum::serve(listener, router) => {
+            if let Err(e) = result {
+                tracing::error!("web server error: {e}");
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("received ctrl-c, shutting down");
+        }
+        _ = shutdown_sub.next() => {
+            info!("received shutdown command via NATS");
+        }
+    }
+
+    poll_handle.abort();
+
+    if let Err(e) = lifecycle_manager.stop().await {
+        tracing::warn!("lifecycle manager stop error: {e}");
+    }
+
+    info!("ennio orchestrator stopped");
+    println!("Ennio orchestrator stopped.");
+    Ok(())
+}
+
+pub async fn stop(config_path: Option<&str>) -> Result<()> {
+    let config = load_orchestrator_config(config_path)?;
+    let nats_client = connect_nats(&config).await?;
+    let publisher = EventPublisher::new(nats_client);
+
+    publisher
+        .publish_command("shutdown", &serde_json::json!({"reason": "cli-stop"}))
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to send shutdown command: {e}"))?;
+
+    println!("Shutdown command sent.");
+    Ok(())
+}
+
+pub async fn status(
+    project: Option<&str>,
+    config_path: Option<&str>,
     output_format: &OutputFormat,
 ) -> Result<()> {
-    let session = SessionSummary {
-        id: "pending".to_owned(),
-        project: project.to_owned(),
-        status: "spawning".to_owned(),
-        agent: "claude-code".to_owned(),
-        branch: String::new(),
+    let bootstrap = bootstrap_readonly(config_path).await?;
+
+    let project_id = project
+        .map(|p| ProjectId::new(p.to_owned()))
+        .transpose()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let sessions = ennio_db::repo::sessions::list(&bootstrap.pool, project_id.as_ref())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to list sessions: {e}"))?;
+
+    let summaries: Vec<SessionSummary> = sessions.iter().map(session_to_summary).collect();
+    print_sessions(&summaries, output_format)
+}
+
+pub async fn spawn(
+    project: &str,
+    issue: Option<&str>,
+    prompt: Option<&str>,
+    branch: Option<&str>,
+    role: Option<&str>,
+    config_path: Option<&str>,
+    output_format: &OutputFormat,
+) -> Result<()> {
+    let bootstrap = bootstrap_full(config_path).await?;
+
+    let project_id = ProjectId::new(project.to_owned()).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let request = SpawnRequest {
+        project_id: &project_id,
+        issue_id: issue,
+        prompt,
+        branch,
+        role,
     };
 
+    let session = bootstrap
+        .session_manager
+        .spawn(&request)
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn failed: {e}"))?;
+
+    let summary = session_to_summary(&session);
+
     match output_format {
-        OutputFormat::Json => format::print_json(&session)?,
+        OutputFormat::Json => format::print_json(&summary)?,
         OutputFormat::Table => {
-            println!("Spawning session for project: {project}");
+            println!("Session spawned: {}", summary.id);
+            println!("  Project: {}", summary.project);
+            println!("  Status:  {}", summary.status);
+            println!("  Agent:   {}", summary.agent);
+            if !summary.branch.is_empty() {
+                println!("  Branch:  {}", summary.branch);
+            }
         }
     }
     Ok(())
 }
 
-pub async fn session_info(id: &str, output_format: &OutputFormat) -> Result<()> {
-    let session = SessionSummary {
-        id: id.to_owned(),
-        project: String::new(),
-        status: "unknown".to_owned(),
-        agent: String::new(),
-        branch: String::new(),
-    };
+pub async fn session_info(
+    id: &str,
+    config_path: Option<&str>,
+    output_format: &OutputFormat,
+) -> Result<()> {
+    let bootstrap = bootstrap_readonly(config_path).await?;
+
+    let session_id = SessionId::new(id.to_owned()).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let session = ennio_db::repo::sessions::get(&bootstrap.pool, &session_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get session: {e}"))?
+        .ok_or_else(|| anyhow::anyhow!("session not found: {id}"))?;
+
+    let summary = session_to_summary(&session);
 
     match output_format {
-        OutputFormat::Json => format::print_json(&session)?,
+        OutputFormat::Json => format::print_json(&summary)?,
         OutputFormat::Table => {
-            println!("Session: {id}");
-            println!("  Status: unknown");
+            println!("Session: {}", summary.id);
+            println!("  Project: {}", summary.project);
+            println!("  Status:  {}", summary.status);
+            println!("  Agent:   {}", summary.agent);
+            if !summary.branch.is_empty() {
+                println!("  Branch:  {}", summary.branch);
+            }
         }
     }
     Ok(())
 }
 
-pub async fn session_kill(id: &str) -> Result<()> {
-    println!("Killing session: {id}");
+pub async fn session_kill(id: &str, config_path: Option<&str>) -> Result<()> {
+    let bootstrap = bootstrap_full(config_path).await?;
+
+    let session_id = SessionId::new(id.to_owned()).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    bootstrap
+        .session_manager
+        .kill(&session_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("kill failed: {e}"))?;
+
+    println!("Session killed: {id}");
     Ok(())
 }
 
-pub async fn session_restore(id: &str, output_format: &OutputFormat) -> Result<()> {
-    let session = SessionSummary {
-        id: id.to_owned(),
-        project: String::new(),
-        status: "restoring".to_owned(),
-        agent: String::new(),
-        branch: String::new(),
-    };
+pub async fn session_restore(
+    id: &str,
+    config_path: Option<&str>,
+    output_format: &OutputFormat,
+) -> Result<()> {
+    let bootstrap = bootstrap_full(config_path).await?;
+
+    let session_id = SessionId::new(id.to_owned()).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let session = bootstrap
+        .session_manager
+        .restore(&session_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("restore failed: {e}"))?;
+
+    let summary = session_to_summary(&session);
 
     match output_format {
-        OutputFormat::Json => format::print_json(&session)?,
+        OutputFormat::Json => format::print_json(&summary)?,
         OutputFormat::Table => {
-            println!("Restoring session: {id}");
+            println!("Session restored: {}", summary.id);
+            println!("  Status: {}", summary.status);
         }
     }
     Ok(())
 }
 
-pub async fn send(session: &str, message: &str) -> Result<()> {
-    println!("Sending to {session}: {message}");
+pub async fn send(session: &str, message: &str, config_path: Option<&str>) -> Result<()> {
+    let bootstrap = bootstrap_full(config_path).await?;
+
+    let session_id = SessionId::new(session.to_owned()).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    bootstrap
+        .session_manager
+        .send(&session_id, message)
+        .await
+        .map_err(|e| anyhow::anyhow!("send failed: {e}"))?;
+
+    println!("Message sent to session {session}.");
     Ok(())
 }
 
 pub async fn dashboard(port: u16) -> Result<()> {
-    println!("Starting dashboard on port {port}...");
+    println!("Dashboard available at http://localhost:{port}");
+    println!("Start the orchestrator with `ennio start` to enable the web API.");
     Ok(())
 }
 
-pub async fn open(session: &str) -> Result<()> {
-    println!("Opening session terminal: {session}");
+pub async fn open(session: &str, config_path: Option<&str>) -> Result<()> {
+    let bootstrap = bootstrap_readonly(config_path).await?;
+
+    let session_id = SessionId::new(session.to_owned()).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let session_data = ennio_db::repo::sessions::get(&bootstrap.pool, &session_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to get session: {e}"))?
+        .ok_or_else(|| anyhow::anyhow!("session not found: {session}"))?;
+
+    match session_data.tmux_name {
+        Some(ref name) => {
+            println!("Attach to session terminal with:");
+            println!("  tmux attach-session -t {name}");
+        }
+        None => {
+            println!("No tmux session associated with {session}.");
+        }
+    }
+    Ok(())
+}
+
+pub async fn node_status(host: Option<&str>) -> Result<()> {
+    match host {
+        Some(h) => println!("Checking node status for host: {h}"),
+        None => println!("Checking status of all configured nodes..."),
+    }
+    Ok(())
+}
+
+pub async fn node_list() -> Result<()> {
+    println!("Listing configured node projects...");
+    Ok(())
+}
+
+pub async fn node_connect(project: &str) -> Result<()> {
+    println!("Connecting to node for project: {project}");
+    Ok(())
+}
+
+pub async fn node_disconnect(project: &str) -> Result<()> {
+    println!("Disconnecting node for project: {project}");
     Ok(())
 }
 
@@ -233,6 +547,22 @@ mod tests {
         assert!(
             !yaml.contains("notification_routing"),
             "empty HashMap fields should be skipped"
+        );
+        assert!(
+            !yaml.contains("database_url"),
+            "None database_url should be skipped"
+        );
+        assert!(
+            !yaml.contains("nats_url"),
+            "None nats_url should be skipped"
+        );
+        assert!(
+            !yaml.contains("api_token"),
+            "None api_token should be skipped"
+        );
+        assert!(
+            !yaml.contains("cors_origins"),
+            "empty cors_origins should be skipped"
         );
     }
 }

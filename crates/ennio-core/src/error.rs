@@ -76,6 +76,9 @@ pub enum EnnioError {
         message: String,
     },
 
+    #[error("node error on {host}: {message}")]
+    Node { host: String, message: String },
+
     #[error("internal error: {message}")]
     Internal { message: String },
 }

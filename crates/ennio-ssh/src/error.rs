@@ -21,6 +21,9 @@ pub enum SshError {
     #[error("failed to load SSH key from {path}: {message}")]
     KeyLoad { path: PathBuf, message: String },
 
+    #[error("SSH tunnel error: {message}")]
+    Tunnel { message: String },
+
     #[error("I/O error: {source}")]
     Io {
         #[from]
@@ -93,6 +96,16 @@ mod tests {
         let err = SshError::ChannelClosed;
         let msg = err.to_string();
         assert!(msg.contains("channel closed"));
+    }
+
+    #[test]
+    fn tunnel_error_displays_message() {
+        let err = SshError::Tunnel {
+            message: "port already in use".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("tunnel"));
+        assert!(msg.contains("port already in use"));
     }
 
     #[test]

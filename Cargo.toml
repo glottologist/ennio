@@ -8,6 +8,8 @@ members = [
     "crates/ennio-ssh",
     "crates/ennio-services",
     "crates/ennio-plugins",
+    "crates/ennio-proto",
+    "crates/ennio-node",
     "crates/ennio-cli",
     "crates/ennio-web",
     "crates/ennio-dashboard",
@@ -92,6 +94,12 @@ anyhow = "1"
 russh = "0.48"
 russh-keys = "0.48"
 
+# gRPC
+tonic = "0.13"
+prost = "0.13"
+tonic-build = "0.13"
+protobuf-src = "2"
+
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -123,6 +131,8 @@ ennio-nats = { path = "crates/ennio-nats" }
 ennio-ssh = { path = "crates/ennio-ssh" }
 ennio-services = { path = "crates/ennio-services" }
 ennio-plugins = { path = "crates/ennio-plugins" }
+ennio-proto = { path = "crates/ennio-proto" }
+ennio-node = { path = "crates/ennio-node" }
 ennio-cli = { path = "crates/ennio-cli" }
 ennio-web = { path = "crates/ennio-web" }
 ennio-dashboard = { path = "crates/ennio-dashboard" }

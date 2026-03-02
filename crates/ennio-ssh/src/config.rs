@@ -82,6 +82,7 @@ pub enum SshStrategy {
     Tmux,
     Tmate,
     RemoteControl,
+    Node,
 }
 
 mod duration_secs {
@@ -129,6 +130,53 @@ mod option_duration_secs {
     }
 }
 
+impl From<ennio_core::config::SshAuthConfig> for SshAuth {
+    fn from(auth: ennio_core::config::SshAuthConfig) -> Self {
+        match auth {
+            ennio_core::config::SshAuthConfig::Key { path, passphrase } => {
+                Self::Key { path, passphrase }
+            }
+            ennio_core::config::SshAuthConfig::Agent => Self::Agent,
+            ennio_core::config::SshAuthConfig::Password { password } => Self::Password { password },
+        }
+    }
+}
+
+impl From<ennio_core::config::SshStrategyConfig> for SshStrategy {
+    fn from(strategy: ennio_core::config::SshStrategyConfig) -> Self {
+        match strategy {
+            ennio_core::config::SshStrategyConfig::Tmux => Self::Tmux,
+            ennio_core::config::SshStrategyConfig::Tmate => Self::Tmate,
+            ennio_core::config::SshStrategyConfig::RemoteControl => Self::RemoteControl,
+            ennio_core::config::SshStrategyConfig::Node => Self::Node,
+        }
+    }
+}
+
+impl From<ennio_core::config::HostKeyPolicyConfig> for HostKeyPolicy {
+    fn from(policy: ennio_core::config::HostKeyPolicyConfig) -> Self {
+        match policy {
+            ennio_core::config::HostKeyPolicyConfig::Strict => Self::Strict,
+            ennio_core::config::HostKeyPolicyConfig::AcceptNew => Self::AcceptNew,
+            ennio_core::config::HostKeyPolicyConfig::AcceptAll => Self::AcceptAll,
+        }
+    }
+}
+
+impl From<ennio_core::config::SshConnectionConfig> for SshConfig {
+    fn from(config: ennio_core::config::SshConnectionConfig) -> Self {
+        Self {
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            auth: config.auth.into(),
+            connection_timeout: config.connection_timeout,
+            keepalive_interval: config.keepalive_interval,
+            host_key_policy: config.host_key_policy.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
@@ -140,6 +188,7 @@ mod tests {
     #[case("tmux", SshStrategy::Tmux)]
     #[case("tmate", SshStrategy::Tmate)]
     #[case("remote_control", SshStrategy::RemoteControl)]
+    #[case("node", SshStrategy::Node)]
     fn strategy_deserializes(#[case] input: &str, #[case] expected: SshStrategy) {
         let json = format!("\"{input}\"");
         let strategy: SshStrategy = serde_json::from_str(&json).unwrap();
@@ -254,5 +303,85 @@ mod tests {
         }"#;
         let config: SshConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.host_key_policy, HostKeyPolicy::Strict);
+    }
+
+    #[rstest]
+    #[case(ennio_core::config::SshStrategyConfig::Tmux, SshStrategy::Tmux)]
+    #[case(ennio_core::config::SshStrategyConfig::Tmate, SshStrategy::Tmate)]
+    #[case(
+        ennio_core::config::SshStrategyConfig::RemoteControl,
+        SshStrategy::RemoteControl
+    )]
+    #[case(ennio_core::config::SshStrategyConfig::Node, SshStrategy::Node)]
+    fn strategy_config_converts(
+        #[case] input: ennio_core::config::SshStrategyConfig,
+        #[case] expected: SshStrategy,
+    ) {
+        let result: SshStrategy = input.into();
+        assert_eq!(result, expected);
+    }
+
+    #[rstest]
+    #[case(ennio_core::config::HostKeyPolicyConfig::Strict, HostKeyPolicy::Strict)]
+    #[case(
+        ennio_core::config::HostKeyPolicyConfig::AcceptNew,
+        HostKeyPolicy::AcceptNew
+    )]
+    #[case(
+        ennio_core::config::HostKeyPolicyConfig::AcceptAll,
+        HostKeyPolicy::AcceptAll
+    )]
+    fn host_key_policy_config_converts(
+        #[case] input: ennio_core::config::HostKeyPolicyConfig,
+        #[case] expected: HostKeyPolicy,
+    ) {
+        let result: HostKeyPolicy = input.into();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn ssh_auth_agent_converts() {
+        let input = ennio_core::config::SshAuthConfig::Agent;
+        let result: SshAuth = input.into();
+        assert!(matches!(result, SshAuth::Agent));
+    }
+
+    #[test]
+    fn ssh_auth_key_converts() {
+        let input = ennio_core::config::SshAuthConfig::Key {
+            path: PathBuf::from("/home/user/.ssh/id_ed25519"),
+            passphrase: Some("secret".to_string()),
+        };
+        let result: SshAuth = input.into();
+        match result {
+            SshAuth::Key { path, passphrase } => {
+                assert_eq!(path, PathBuf::from("/home/user/.ssh/id_ed25519"));
+                assert_eq!(passphrase, Some("secret".to_string()));
+            }
+            _ => panic!("expected Key variant"),
+        }
+    }
+
+    #[test]
+    fn ssh_connection_config_converts() {
+        let input = ennio_core::config::SshConnectionConfig {
+            host: "remote.example.com".to_string(),
+            port: 2222,
+            username: "deploy".to_string(),
+            auth: ennio_core::config::SshAuthConfig::Agent,
+            strategy: ennio_core::config::SshStrategyConfig::Tmate,
+            connection_timeout: Duration::from_secs(60),
+            keepalive_interval: Some(Duration::from_secs(15)),
+            host_key_policy: ennio_core::config::HostKeyPolicyConfig::AcceptNew,
+            node_config: None,
+        };
+        let result: SshConfig = input.into();
+        assert_eq!(result.host, "remote.example.com");
+        assert_eq!(result.port, 2222);
+        assert_eq!(result.username, "deploy");
+        assert!(matches!(result.auth, SshAuth::Agent));
+        assert_eq!(result.connection_timeout, Duration::from_secs(60));
+        assert_eq!(result.keepalive_interval, Some(Duration::from_secs(15)));
+        assert_eq!(result.host_key_policy, HostKeyPolicy::AcceptNew);
     }
 }

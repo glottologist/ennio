@@ -1,29 +1,28 @@
 [package]
-name = "ennio-ssh"
-description = "SSH client and remote execution strategies for Ennio"
+name = "ennio-node"
+description = "Remote node daemon for Ennio agent orchestration via gRPC"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "ennio-node"
+path = "src/main.rs"
+
 [dependencies]
 ennio-core.workspace = true
 ennio-proto.workspace = true
 async-trait.workspace = true
-tonic.workspace = true
-russh.workspace = true
-russh-keys.workspace = true
-chrono.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
+clap.workspace = true
+prost.workspace = true
 tokio.workspace = true
+tonic.workspace = true
 tracing.workspace = true
-shell-escape.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 rstest.workspace = true
 tokio-test.workspace = true
-tempfile.workspace = true

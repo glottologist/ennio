@@ -93,6 +93,36 @@ enum Commands {
         /// Session ID (or "all" for all sessions)
         session: String,
     },
+
+    /// Manage remote node daemons
+    Node {
+        #[command(subcommand)]
+        action: NodeAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum NodeAction {
+    /// Check node health status
+    Status {
+        /// Remote host (if omitted, checks all configured nodes)
+        host: Option<String>,
+    },
+
+    /// List all configured node projects
+    List,
+
+    /// Establish node connection for a project
+    Connect {
+        /// Project ID
+        project: String,
+    },
+
+    /// Disconnect and optionally shutdown a remote node
+    Disconnect {
+        /// Project ID
+        project: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -128,11 +158,15 @@ async fn main() -> Result<()> {
 
     ennio_observe::logging::init_logging();
 
+    let cfg = cli.config.as_deref();
+
     match cli.command {
         Commands::Init { path } => commands::init(&path).await,
-        Commands::Start => commands::start(cli.config.as_deref()).await,
-        Commands::Stop => commands::stop().await,
-        Commands::Status { project } => commands::status(project.as_deref(), &cli.format).await,
+        Commands::Start => commands::start(cfg).await,
+        Commands::Stop => commands::stop(cfg).await,
+        Commands::Status { project } => {
+            commands::status(project.as_deref(), cfg, &cli.format).await
+        }
         Commands::Spawn {
             project,
             issue,
@@ -146,20 +180,27 @@ async fn main() -> Result<()> {
                 prompt.as_deref(),
                 branch.as_deref(),
                 role.as_deref(),
+                cfg,
                 &cli.format,
             )
             .await
         }
         Commands::Session { action } => match action {
-            SessionAction::Info { id } => commands::session_info(&id, &cli.format).await,
-            SessionAction::Kill { id } => commands::session_kill(&id).await,
-            SessionAction::Restore { id } => commands::session_restore(&id, &cli.format).await,
+            SessionAction::Info { id } => commands::session_info(&id, cfg, &cli.format).await,
+            SessionAction::Kill { id } => commands::session_kill(&id, cfg).await,
+            SessionAction::Restore { id } => commands::session_restore(&id, cfg, &cli.format).await,
             SessionAction::List { project } => {
-                commands::status(project.as_deref(), &cli.format).await
+                commands::status(project.as_deref(), cfg, &cli.format).await
             }
         },
-        Commands::Send { session, message } => commands::send(&session, &message).await,
+        Commands::Send { session, message } => commands::send(&session, &message, cfg).await,
         Commands::Dashboard { port } => commands::dashboard(port).await,
-        Commands::Open { session } => commands::open(&session).await,
+        Commands::Open { session } => commands::open(&session, cfg).await,
+        Commands::Node { action } => match action {
+            NodeAction::Status { host } => commands::node_status(host.as_deref()).await,
+            NodeAction::List => commands::node_list().await,
+            NodeAction::Connect { project } => commands::node_connect(&project).await,
+            NodeAction::Disconnect { project } => commands::node_disconnect(&project).await,
+        },
     }
 }

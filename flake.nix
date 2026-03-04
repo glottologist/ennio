@@ -48,6 +48,7 @@
           nativeBuildInputs = with pkgs; [
             pkg-config
             protobuf
+            cmake
           ];
 
           PROTOC = "${pkgs.protobuf}/bin/protoc";

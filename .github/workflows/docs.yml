@@ -1,0 +1,34 @@
+name: Documentation
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+    paths:
+      - "docs/**"
+
+defaults:
+  run:
+    working-directory: ./docs
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mdbook
+        uses: taiki-e/install-action@mdbook
+
+      - name: Build docs
+        run: mdbook build -d book
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/book

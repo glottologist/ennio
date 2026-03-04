@@ -44,3 +44,6 @@ Thumbs.db
 
 # JS (agent-orchestrator legacy)
 node_modules/
+
+# mdBook output
+docs/book/

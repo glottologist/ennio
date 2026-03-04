@@ -1,0 +1,16 @@
+[book]
+authors = ["glottologist"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Ennio Documentation"
+description = "Documentation for Ennio, the AI agent orchestrator"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/glottologist/ennio"
+edit-url-template = "https://github.com/glottologist/ennio/edit/main/docs/{path}"

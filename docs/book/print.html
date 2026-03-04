@@ -1,0 +1,1705 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Ennio Documentation</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Documentation for Ennio, the AI agent orchestrator">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Ennio Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/glottologist/ennio" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="ennio"><a class="header" href="#ennio">Ennio</a></h1>
+<p><strong>Ennio</strong> is an AI agent orchestrator, named after <a href="https://en.wikipedia.org/wiki/Ennio_Morricone">Ennio Morricone</a> — the legendary Italian composer who conducted entire orchestras to create something greater than any single instrument could achieve.</p>
+<p>Ennio does the same with AI coding agents. It spawns multiple agents across repositories, monitors their progress through the full pull request lifecycle, and reacts when things go wrong — automatically sending CI failure logs back to the agent, notifying you when reviews come in, and even auto-merging approved PRs.</p>
+<h2 id="what-ennio-does"><a class="header" href="#what-ennio-does">What Ennio Does</a></h2>
+<ul>
+<li><strong>Spawns</strong> AI coding agents (Claude Code, Aider, Codex, OpenCode) in isolated git worktrees or cloned workspaces</li>
+<li><strong>Monitors</strong> each session through 16 lifecycle states, from <code>Spawning</code> through <code>Merged</code></li>
+<li><strong>Reacts</strong> to external events — CI failures, code review feedback, merge conflicts — by sending instructions back to the agent or notifying you</li>
+<li><strong>Runs locally or remotely</strong> over SSH, with a gRPC daemon (<code>ennio-node</code>) for structured remote communication</li>
+<li><strong>Tracks costs</strong> with double-entry bookkeeping and configurable budgets</li>
+<li><strong>Exposes</strong> a REST API, web dashboard, and terminal UI for monitoring</li>
+</ul>
+<h2 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Concept</th><th>Description</th></tr></thead><tbody>
+<tr><td><strong>Session</strong></td><td>A single agent working on a task in an isolated workspace</td></tr>
+<tr><td><strong>Project</strong></td><td>A repository configuration with plugin overrides and reaction rules</td></tr>
+<tr><td><strong>Plugin</strong></td><td>A swappable implementation for one of 7 slots (agent, runtime, workspace, tracker, SCM, notifier, terminal)</td></tr>
+<tr><td><strong>Reaction</strong></td><td>A rule that fires when a session enters a specific state (e.g., CI failed → send logs to agent)</td></tr>
+<tr><td><strong>Lifecycle Manager</strong></td><td>The polling loop that checks external state and triggers reactions</td></tr>
+</tbody></table>
+</div>
+<h2 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a Glance</a></h2>
+<p>Ennio is a Rust workspace with 15 crates:</p>
+<pre><code>ennio-cli          CLI binary (clap)
+ennio-core         Shared types, config, session model
+ennio-services     Orchestration (session manager, lifecycle, event bus)
+ennio-plugins      All plugin implementations
+ennio-db           SQLite persistence
+ennio-ssh          SSH client and remote strategies
+ennio-node         Remote gRPC daemon
+ennio-proto        Protobuf service definitions
+ennio-web          REST API (axum)
+ennio-tui          Terminal dashboard (ratatui)
+ennio-dashboard    Web dashboard (dioxus WASM)
+ennio-nats         NATS messaging
+ennio-ledger       Cost tracking and budgets
+ennio-ml           ML trait interfaces
+ennio-observe      OpenTelemetry integration
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<h2 id="nix-recommended"><a class="header" href="#nix-recommended">Nix (Recommended)</a></h2>
+<p>Ennio provides a Nix flake with pre-built packages.</p>
+<pre><code class="language-bash"># Run directly without installing
+nix run github:glottologist/ennio -- --help
+
+# Build the CLI
+nix build github:glottologist/ennio
+
+# Build the remote node daemon
+nix build github:glottologist/ennio#ennio-node
+
+# Build the WASM dashboard
+nix build github:glottologist/ennio#ennio-dashboard
+</code></pre>
+<p>From a local checkout:</p>
+<pre><code class="language-bash">nix build              # ennio CLI (default package)
+nix build .#ennio-node # remote daemon
+nix run                # run directly
+nix flake check        # clippy, fmt, tests, docs, audit
+nix develop            # dev shell with all tools
+</code></pre>
+<p>The dev shell includes: <code>cargo-nextest</code>, <code>cargo-audit</code>, <code>cargo-watch</code>, <code>cargo-bloat</code>, <code>bacon</code>, and <code>rust-analyzer</code>.</p>
+<h2 id="cargo"><a class="header" href="#cargo">Cargo</a></h2>
+<p>Requires Rust 1.88+ and <code>protoc</code> (protobuf compiler).</p>
+<pre><code class="language-bash"># Install protoc (Debian/Ubuntu)
+sudo apt install protobuf-compiler
+
+# Install protoc (macOS)
+brew install protobuf
+
+# Build both binaries
+cargo build --release -p ennio-cli -p ennio-node
+</code></pre>
+<p>Binaries are at <code>target/release/ennio</code> and <code>target/release/ennio-node</code>.</p>
+<h2 id="docker"><a class="header" href="#docker">Docker</a></h2>
+<pre><code class="language-bash"># Build the image
+docker build -t ennio .
+
+# Run the CLI
+docker run --rm ennio --help
+
+# Run the node daemon
+docker run --rm --entrypoint ennio-node ennio --help
+</code></pre>
+<p>Pre-built images are published to <code>glottologist/ennio</code> on Docker Hub for tagged releases (<code>v*</code>).</p>
+<p>The Docker image is based on <code>debian:bookworm-slim</code> and includes <code>git</code>, <code>tmux</code>, and <code>openssh-client</code> since Ennio shells out to these at runtime.</p>
+<h2 id="runtime-dependencies"><a class="header" href="#runtime-dependencies">Runtime Dependencies</a></h2>
+<p>Ennio requires these tools to be available on <code>$PATH</code>:</p>
+<div class="table-wrapper"><table><thead><tr><th>Tool</th><th>Required By</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>git</code></td><td>All workspaces</td><td>Clone repos, create worktrees, check status</td></tr>
+<tr><td><code>tmux</code></td><td>TmuxRuntime, TmuxStrategy</td><td>Manage agent terminal sessions</td></tr>
+<tr><td><code>ssh</code></td><td>SSH strategies</td><td>Connect to remote machines</td></tr>
+<tr><td><code>tmate</code></td><td>TmateStrategy only</td><td>Shared terminal sessions</td></tr>
+</tbody></table>
+</div>
+<p>Optional services:</p>
+<div class="table-wrapper"><table><thead><tr><th>Service</th><th>Purpose</th></tr></thead><tbody>
+<tr><td>NATS</td><td>Event messaging between components</td></tr>
+<tr><td>SQLite</td><td>Session and event persistence (auto-created)</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
+<p>This guide gets you from zero to a running agent in under 5 minutes.</p>
+<h2 id="1-initialize-configuration"><a class="header" href="#1-initialize-configuration">1. Initialize Configuration</a></h2>
+<pre><code class="language-bash">ennio init .
+</code></pre>
+<p>This creates <code>ennio.yaml</code> with sensible defaults. Edit it to add your project:</p>
+<pre><code class="language-yaml">port: 3000
+defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+
+projects:
+  - name: my-app
+    repo: git@github.com:user/my-app.git
+    path: /home/user/repos/my-app
+    default_branch: main
+    tracker_config:
+      provider: github
+      owner: user
+      repo: my-app
+      token: ${GITHUB_TOKEN}
+    scm_config:
+      provider: github
+      owner: user
+      repo: my-app
+      token: ${GITHUB_TOKEN}
+</code></pre>
+<blockquote>
+<p><strong>Note:</strong> Environment variables in <code>${VAR}</code> syntax are expanded at load time.</p>
+</blockquote>
+<h2 id="2-start-the-orchestrator"><a class="header" href="#2-start-the-orchestrator">2. Start the Orchestrator</a></h2>
+<pre><code class="language-bash">ennio start
+</code></pre>
+<p>This boots the lifecycle polling loop, the web API, and connects to NATS and SQLite.</p>
+<h2 id="3-spawn-an-agent-session"><a class="header" href="#3-spawn-an-agent-session">3. Spawn an Agent Session</a></h2>
+<pre><code class="language-bash"># Work on a GitHub issue
+ennio spawn my-app --issue 42
+
+# Or give a direct prompt
+ennio spawn my-app --prompt "Add input validation to the signup form"
+
+# Optionally specify a branch
+ennio spawn my-app --issue 42 --branch feat/signup-validation
+</code></pre>
+<p>Ennio will:</p>
+<ol>
+<li>Create an isolated workspace (git worktree by default)</li>
+<li>Run any <code>post_create</code> hooks (e.g., <code>npm install</code>)</li>
+<li>Launch the agent with the issue description or prompt</li>
+<li>Begin monitoring the session lifecycle</li>
+</ol>
+<h2 id="4-monitor-progress"><a class="header" href="#4-monitor-progress">4. Monitor Progress</a></h2>
+<pre><code class="language-bash"># See all sessions
+ennio status
+
+# Filter by project
+ennio status my-app
+
+# Detailed session info
+ennio session info &lt;session-id&gt;
+
+# Open the web dashboard
+ennio dashboard
+</code></pre>
+<h2 id="5-interact-with-a-session"><a class="header" href="#5-interact-with-a-session">5. Interact with a Session</a></h2>
+<pre><code class="language-bash"># Send additional instructions to the agent
+ennio send &lt;session-id&gt; "Also add unit tests"
+
+# Open the agent's tmux terminal
+ennio open &lt;session-id&gt;
+
+# Kill a stuck session
+ennio session kill &lt;session-id&gt;
+
+# Restore an exited session
+ennio session restore &lt;session-id&gt;
+</code></pre>
+<h2 id="6-stop-the-orchestrator"><a class="header" href="#6-stop-the-orchestrator">6. Stop the Orchestrator</a></h2>
+<pre><code class="language-bash">ennio stop
+</code></pre>
+<h2 id="what-happens-automatically"><a class="header" href="#what-happens-automatically">What Happens Automatically</a></h2>
+<p>Once a session is spawned, the lifecycle manager polls external state and reacts:</p>
+<div class="table-wrapper"><table><thead><tr><th>Event</th><th>Default Reaction</th></tr></thead><tbody>
+<tr><td>CI fails</td><td>Sends failure logs to the agent (up to 2 retries)</td></tr>
+<tr><td>Code review requests changes</td><td>Sends review comments to the agent</td></tr>
+<tr><td>Merge conflicts detected</td><td>Instructs the agent to rebase</td></tr>
+<tr><td>PR approved + CI green</td><td>Notifies you (or auto-merges if configured)</td></tr>
+<tr><td>Agent exits unexpectedly</td><td>Sends urgent notification</td></tr>
+</tbody></table>
+</div>
+<p>All reactions are configurable per-project. See the <a href="getting-started/../guides/reactions.html">Reactions</a> guide.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p>Ennio is configured via <code>ennio.yaml</code>, discovered by searching from the current directory upward.</p>
+<h2 id="minimal-configuration"><a class="header" href="#minimal-configuration">Minimal Configuration</a></h2>
+<pre><code class="language-yaml">projects:
+  - name: my-project
+    repo: git@github.com:user/repo.git
+    path: /home/user/repos/repo
+</code></pre>
+<p>Everything else uses defaults: <code>tmux</code> runtime, <code>claude-code</code> agent, <code>worktree</code> workspace, port 3000.</p>
+<h2 id="environment-variable-expansion"><a class="header" href="#environment-variable-expansion">Environment Variable Expansion</a></h2>
+<p>All string values support <code>${VAR}</code> expansion:</p>
+<pre><code class="language-yaml">api_token: ${ENNIO_API_TOKEN}
+projects:
+  - name: app
+    tracker_config:
+      token: ${GITHUB_TOKEN}
+</code></pre>
+<h2 id="config-discovery"><a class="header" href="#config-discovery">Config Discovery</a></h2>
+<p>Ennio searches for <code>ennio.yaml</code> starting from the current working directory, walking up to the filesystem root. The first match wins.</p>
+<h2 id="full-reference"><a class="header" href="#full-reference">Full Reference</a></h2>
+<p>See the <a href="getting-started/../reference/configuration.html">Configuration Reference</a> for every field, its type, default value, and description.</p>
+<h2 id="per-project-overrides"><a class="header" href="#per-project-overrides">Per-Project Overrides</a></h2>
+<p>Each project can override the global defaults for runtime, agent, and workspace:</p>
+<pre><code class="language-yaml">defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+
+projects:
+  - name: fast-project
+    runtime: process       # override: use direct process instead of tmux
+    agent: aider           # override: use aider instead of claude-code
+    workspace: clone       # override: full clone instead of worktree
+    # ...
+</code></pre>
+<h2 id="database"><a class="header" href="#database">Database</a></h2>
+<p>Ennio uses SQLite for persistence. The database file is created automatically:</p>
+<pre><code class="language-yaml">database_url: sqlite:ennio.db    # relative to working directory
+</code></pre>
+<p>If omitted, Ennio uses <code>sqlite::memory:</code> (data lost on restart).</p>
+<h2 id="api-authentication"><a class="header" href="#api-authentication">API Authentication</a></h2>
+<p>Protect the REST API with a bearer token:</p>
+<pre><code class="language-yaml">api_token: ${ENNIO_API_TOKEN}
+</code></pre>
+<p>All authenticated endpoints require <code>Authorization: Bearer &lt;token&gt;</code>. The token is compared using constant-time SHA-256 hashing to prevent timing attacks.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="session-lifecycle"><a class="header" href="#session-lifecycle">Session Lifecycle</a></h1>
+<p>Every agent session in Ennio progresses through a state machine with 16 states.</p>
+<h2 id="state-machine"><a class="header" href="#state-machine">State Machine</a></h2>
+<pre><code>Spawning → Working → PrDraft → PrOpen ──→ CiPassing → ReviewPending → Approved → Merged → Done
+                                  │            │             │             │
+                                  │        CiFailed    ChangesRequested   MergeConflicts
+                                  │            │             │             │
+                                  │       CiFixSent    (agent fixes)   (agent rebases)
+                                  │            │
+                                  │       CiFixFailed
+                                  │
+                                  ├── Exited (restorable)
+                                  └── Killed (terminal)
+</code></pre>
+<h2 id="states"><a class="header" href="#states">States</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>State</th><th>Terminal</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>Spawning</code></td><td>No</td><td>Workspace being created, agent starting</td></tr>
+<tr><td><code>Working</code></td><td>No</td><td>Agent is actively writing code</td></tr>
+<tr><td><code>PrDraft</code></td><td>No</td><td>Draft pull request created</td></tr>
+<tr><td><code>PrOpen</code></td><td>No</td><td>Pull request opened for review</td></tr>
+<tr><td><code>CiPassing</code></td><td>No</td><td>CI checks are green</td></tr>
+<tr><td><code>CiFailed</code></td><td>No</td><td>CI checks failed</td></tr>
+<tr><td><code>CiFixSent</code></td><td>No</td><td>Agent sent a fix for CI</td></tr>
+<tr><td><code>CiFixFailed</code></td><td>No</td><td>CI fix attempt also failed</td></tr>
+<tr><td><code>ReviewPending</code></td><td>No</td><td>Awaiting code review</td></tr>
+<tr><td><code>ChangesRequested</code></td><td>No</td><td>Reviewer requested changes</td></tr>
+<tr><td><code>Approved</code></td><td>No</td><td>PR approved</td></tr>
+<tr><td><code>MergeConflicts</code></td><td>No</td><td>Merge conflicts detected</td></tr>
+<tr><td><code>Merged</code></td><td>Yes</td><td>PR merged successfully</td></tr>
+<tr><td><code>Done</code></td><td>Yes</td><td>Session completed normally</td></tr>
+<tr><td><code>Exited</code></td><td>No</td><td>Agent exited unexpectedly (can be restored)</td></tr>
+<tr><td><code>Killed</code></td><td>Yes</td><td>Manually terminated</td></tr>
+</tbody></table>
+</div>
+<h2 id="activity-states"><a class="header" href="#activity-states">Activity States</a></h2>
+<p>Independent of the session status, each session has an <strong>activity state</strong> reflecting the agent process:</p>
+<div class="table-wrapper"><table><thead><tr><th>Activity</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>Active</code></td><td>Agent is actively working</td></tr>
+<tr><td><code>Ready</code></td><td>Agent is idle, waiting for input</td></tr>
+<tr><td><code>Idle</code></td><td>No recent activity</td></tr>
+<tr><td><code>WaitingInput</code></td><td>Agent explicitly waiting for user input</td></tr>
+<tr><td><code>Blocked</code></td><td>Blocked on an external resource</td></tr>
+<tr><td><code>Exited</code></td><td>Agent process has exited</td></tr>
+</tbody></table>
+</div>
+<h2 id="lifecycle-polling"><a class="header" href="#lifecycle-polling">Lifecycle Polling</a></h2>
+<p>The <strong>LifecycleManager</strong> runs a continuous polling loop that:</p>
+<ol>
+<li>Queries the tracker plugin for PR/CI status</li>
+<li>Queries the SCM plugin for review state</li>
+<li>Compares external state against the current session status</li>
+<li>Triggers status transitions</li>
+<li>Fires configured <a href="guides/./reactions.html">reactions</a></li>
+<li>Emits events to the event bus and database</li>
+</ol>
+<h2 id="session-operations"><a class="header" href="#session-operations">Session Operations</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Operation</th><th>CLI Command</th><th>Effect</th></tr></thead><tbody>
+<tr><td>Spawn</td><td><code>ennio spawn &lt;project&gt;</code></td><td>Creates workspace, starts agent</td></tr>
+<tr><td>Send</td><td><code>ennio send &lt;session&gt; &lt;msg&gt;</code></td><td>Sends text to the running agent</td></tr>
+<tr><td>Kill</td><td><code>ennio session kill &lt;id&gt;</code></td><td>Terminates the agent and marks session as <code>Killed</code></td></tr>
+<tr><td>Restore</td><td><code>ennio session restore &lt;id&gt;</code></td><td>Restarts an <code>Exited</code> session in its existing workspace</td></tr>
+<tr><td>Info</td><td><code>ennio session info &lt;id&gt;</code></td><td>Shows session details, status history, recent events</td></tr>
+<tr><td>List</td><td><code>ennio session list [project]</code></td><td>Lists all sessions, optionally filtered by project</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="plugin-system"><a class="header" href="#plugin-system">Plugin System</a></h1>
+<p>Ennio is built around 7 pluggable slots. Each slot defines a trait, and Ennio ships with concrete implementations you can swap per-project.</p>
+<h2 id="plugin-slots"><a class="header" href="#plugin-slots">Plugin Slots</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Slot</th><th>Trait Location</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><strong>Agent</strong></td><td><code>ennio-core</code></td><td>The AI coding agent to run</td></tr>
+<tr><td><strong>Runtime</strong></td><td><code>ennio-core</code></td><td>How the agent process is managed</td></tr>
+<tr><td><strong>Workspace</strong></td><td><code>ennio-core</code></td><td>How the working directory is created</td></tr>
+<tr><td><strong>Tracker</strong></td><td><code>ennio-core</code></td><td>Issue tracker integration (fetch issues, update status)</td></tr>
+<tr><td><strong>SCM</strong></td><td><code>ennio-core</code></td><td>Source control (PR status, reviews, merge)</td></tr>
+<tr><td><strong>Notifier</strong></td><td><code>ennio-core</code></td><td>Where notifications are sent</td></tr>
+<tr><td><strong>Terminal</strong></td><td><code>ennio-core</code></td><td>Browser-based terminal access to sessions</td></tr>
+</tbody></table>
+</div>
+<h2 id="available-implementations"><a class="header" href="#available-implementations">Available Implementations</a></h2>
+<h3 id="agent-plugins"><a class="header" href="#agent-plugins">Agent Plugins</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>claude-code</code></td><td>Anthropic's Claude Code CLI agent</td></tr>
+<tr><td><code>aider</code></td><td>Aider AI coding assistant</td></tr>
+<tr><td><code>codex</code></td><td>OpenAI Codex CLI</td></tr>
+<tr><td><code>opencode</code></td><td>OpenCode agent</td></tr>
+</tbody></table>
+</div>
+<h3 id="runtime-plugins"><a class="header" href="#runtime-plugins">Runtime Plugins</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>tmux</code></td><td>Runs the agent inside a tmux session (default). Supports attach, send-keys, capture-pane.</td></tr>
+<tr><td><code>process</code></td><td>Direct child process. Simpler but no terminal attach.</td></tr>
+<tr><td><code>ssh</code></td><td>Runs the agent on a remote machine via SSH + tmux.</td></tr>
+</tbody></table>
+</div>
+<h3 id="workspace-plugins"><a class="header" href="#workspace-plugins">Workspace Plugins</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>worktree</code></td><td>Creates a git worktree from the existing repo (default). Fast, shares git objects.</td></tr>
+<tr><td><code>clone</code></td><td>Full shallow clone of the repository. Fully isolated but slower.</td></tr>
+</tbody></table>
+</div>
+<p>Both workspace types support:</p>
+<ul>
+<li><code>symlinks</code> — symlink files into the workspace (e.g., <code>.env</code>)</li>
+<li><code>post_create</code> — shell commands run after workspace creation (e.g., <code>npm install</code>)</li>
+</ul>
+<h3 id="tracker-plugins"><a class="header" href="#tracker-plugins">Tracker Plugins</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>github</code></td><td>GitHub Issues — fetch issue details, create branches from issue titles</td></tr>
+<tr><td><code>linear</code></td><td>Linear — fetch issue details and metadata</td></tr>
+</tbody></table>
+</div>
+<h3 id="scm-plugins"><a class="header" href="#scm-plugins">SCM Plugins</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>github</code></td><td>GitHub PRs — check CI status, get reviews, merge PRs, auto-merge</td></tr>
+</tbody></table>
+</div>
+<h3 id="notifier-plugins"><a class="header" href="#notifier-plugins">Notifier Plugins</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>desktop</code></td><td>Desktop notifications via <code>notify-send</code> (Linux) or <code>osascript</code> (macOS)</td></tr>
+<tr><td><code>slack</code></td><td>Slack incoming webhooks</td></tr>
+<tr><td><code>webhook</code></td><td>Generic HTTP POST to any URL</td></tr>
+</tbody></table>
+</div>
+<h3 id="terminal-plugins"><a class="header" href="#terminal-plugins">Terminal Plugins</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>web</code></td><td>WebSocket-based terminal access through the browser</td></tr>
+</tbody></table>
+</div>
+<h2 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h2>
+<p>Set global defaults and override per-project:</p>
+<pre><code class="language-yaml">defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+  notifiers:
+    - desktop
+
+projects:
+  - name: frontend
+    agent: aider            # use aider for this project
+    workspace: clone        # full clone instead of worktree
+    # runtime inherits tmux from defaults
+</code></pre>
+<h2 id="agent-configuration"><a class="header" href="#agent-configuration">Agent Configuration</a></h2>
+<p>Fine-tune agent behavior per-project:</p>
+<pre><code class="language-yaml">projects:
+  - name: my-app
+    agent_config:
+      model: opus
+      max_turns: 200
+    agent_rules:
+      - "Always write tests for new code"
+      - "Use conventional commits"
+      - "Never modify the database schema without a migration"
+</code></pre>
+<p><code>agent_rules</code> are passed to the agent as system instructions alongside the task prompt.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="reactions"><a class="header" href="#reactions">Reactions</a></h1>
+<p>Reactions are configurable rules that fire when a session enters a specific state. They are the core of Ennio's autonomous behavior.</p>
+<h2 id="how-reactions-work"><a class="header" href="#how-reactions-work">How Reactions Work</a></h2>
+<ol>
+<li>The lifecycle manager detects a state change (e.g., CI failed)</li>
+<li>It looks up matching reaction rules for the session's project</li>
+<li>It checks the retry count and escalation timeout</li>
+<li>It executes the action (send to agent, notify, auto-merge)</li>
+<li>If the action fails or the state persists beyond the escalation timeout, it escalates</li>
+</ol>
+<h2 id="reaction-actions"><a class="header" href="#reaction-actions">Reaction Actions</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Action</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>send_to_agent</code></td><td>Sends a message to the running agent with instructions</td></tr>
+<tr><td><code>notify</code></td><td>Sends a notification through configured notifier plugins</td></tr>
+<tr><td><code>auto_merge</code></td><td>Merges the PR via the SCM plugin</td></tr>
+</tbody></table>
+</div>
+<h2 id="default-reactions"><a class="header" href="#default-reactions">Default Reactions</a></h2>
+<p>Ennio ships with 9 built-in reactions:</p>
+<div class="table-wrapper"><table><thead><tr><th>Key</th><th>Trigger</th><th>Action</th><th>Retries</th><th>Escalation</th></tr></thead><tbody>
+<tr><td><code>ci-failed</code></td><td>CI checks fail</td><td><code>send_to_agent</code></td><td>2</td><td>120s</td></tr>
+<tr><td><code>changes-requested</code></td><td>Reviewer requests changes</td><td><code>send_to_agent</code></td><td>—</td><td>1800s</td></tr>
+<tr><td><code>bugbot-comments</code></td><td>Bot comments on PR</td><td><code>send_to_agent</code></td><td>—</td><td>1800s</td></tr>
+<tr><td><code>merge-conflicts</code></td><td>Merge conflicts detected</td><td><code>send_to_agent</code></td><td>—</td><td>900s</td></tr>
+<tr><td><code>approved-and-green</code></td><td>PR approved + CI green</td><td><code>notify</code></td><td>—</td><td>—</td></tr>
+<tr><td><code>agent-stuck</code></td><td>No activity for threshold</td><td><code>notify</code> (urgent)</td><td>—</td><td>600s</td></tr>
+<tr><td><code>agent-needs-input</code></td><td>Agent waiting for input</td><td><code>notify</code> (urgent)</td><td>—</td><td>—</td></tr>
+<tr><td><code>agent-exited</code></td><td>Agent process exited</td><td><code>notify</code> (urgent)</td><td>—</td><td>—</td></tr>
+<tr><td><code>all-complete</code></td><td>All project sessions done</td><td><code>notify</code> (info)</td><td>—</td><td>—</td></tr>
+</tbody></table>
+</div>
+<h2 id="configuration-2"><a class="header" href="#configuration-2">Configuration</a></h2>
+<p>Override reactions globally or per-project:</p>
+<pre><code class="language-yaml"># Global reactions
+reactions:
+  ci-failed:
+    action: send_to_agent
+    message: "CI failed. Check the logs and fix the issues."
+    max_retries: 3
+    escalation_timeout: 180
+
+  approved-and-green:
+    action: auto_merge   # auto-merge instead of just notifying
+
+projects:
+  - name: critical-app
+    reactions:
+      ci-failed:
+        action: send_to_agent
+        message: "CI is red. This is a critical service — fix immediately."
+        max_retries: 5
+        escalation_timeout: 60
+</code></pre>
+<p>Project-level reactions override global reactions for matching keys.</p>
+<h2 id="escalation"><a class="header" href="#escalation">Escalation</a></h2>
+<p>When a reaction's <code>escalation_timeout</code> expires and the state hasn't changed, Ennio escalates by sending a notification regardless of the original action. This ensures a human is alerted when automated recovery fails.</p>
+<h2 id="event-priority"><a class="header" href="#event-priority">Event Priority</a></h2>
+<p>Reactions emit events with a priority level that affects notification routing:</p>
+<div class="table-wrapper"><table><thead><tr><th>Priority</th><th>Use</th></tr></thead><tbody>
+<tr><td><code>Info</code></td><td>Status updates, completions</td></tr>
+<tr><td><code>Action</code></td><td>Something needs attention soon</td></tr>
+<tr><td><code>Urgent</code></td><td>Immediate human attention required</td></tr>
+<tr><td><code>Critical</code></td><td>System-level failures</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="remote-execution"><a class="header" href="#remote-execution">Remote Execution</a></h1>
+<p>Ennio can run agent sessions on remote machines over SSH. Projects with <code>ssh_config</code> in their configuration run remotely; projects without it run locally.</p>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<ol>
+<li>Ennio connects to the remote host via SSH (using <code>russh</code>)</li>
+<li>Creates a workspace on the remote machine (worktree or clone)</li>
+<li>Launches the agent inside a tmux/tmate session on the remote host</li>
+<li>Monitors the session by reading tmux pane output over SSH</li>
+<li>Optionally runs an <code>ennio-node</code> gRPC daemon for structured communication</li>
+</ol>
+<h2 id="ssh-strategies"><a class="header" href="#ssh-strategies">SSH Strategies</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Strategy</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>tmux</code></td><td>Creates a tmux session on the remote host. Most reliable.</td></tr>
+<tr><td><code>tmate</code></td><td>Creates a tmate session for shared terminal access.</td></tr>
+<tr><td><code>remote_control</code></td><td>Uses <code>claude remote-control</code> for direct agent control.</td></tr>
+<tr><td><code>node</code></td><td>Deploys and communicates with <code>ennio-node</code> via gRPC over SSH tunnel.</td></tr>
+</tbody></table>
+</div>
+<h2 id="configuration-3"><a class="header" href="#configuration-3">Configuration</a></h2>
+<pre><code class="language-yaml">projects:
+  - name: remote-project
+    repo: git@github.com:user/repo.git
+    path: /home/deploy/repos/repo
+    ssh_config:
+      host: build-server.example.com
+      port: 22
+      username: deploy
+      auth:
+        type: key
+        path: ~/.ssh/id_ed25519
+      strategy: tmux
+      connection_timeout: 30s
+      keepalive_interval: 60s
+      host_key_policy: accept_new
+      known_hosts_path: ~/.ssh/known_hosts
+</code></pre>
+<h2 id="authentication-methods"><a class="header" href="#authentication-methods">Authentication Methods</a></h2>
+<h3 id="ssh-key-default"><a class="header" href="#ssh-key-default">SSH Key (default)</a></h3>
+<pre><code class="language-yaml">ssh_config:
+  auth:
+    type: key
+    path: ~/.ssh/id_ed25519
+    passphrase: ${SSH_PASSPHRASE}   # optional
+</code></pre>
+<h3 id="ssh-agent"><a class="header" href="#ssh-agent">SSH Agent</a></h3>
+<pre><code class="language-yaml">ssh_config:
+  auth:
+    type: agent
+</code></pre>
+<p>Uses the running SSH agent (<code>SSH_AUTH_SOCK</code>).</p>
+<h3 id="password"><a class="header" href="#password">Password</a></h3>
+<pre><code class="language-yaml">ssh_config:
+  auth:
+    type: password
+    password: ${SSH_PASSWORD}
+</code></pre>
+<blockquote>
+<p><strong>Warning:</strong> Password authentication is less secure than key-based auth. Use it only when key-based auth is not available.</p>
+</blockquote>
+<h2 id="host-key-verification"><a class="header" href="#host-key-verification">Host Key Verification</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody>
+<tr><td><code>strict</code></td><td>Only connect if host key matches <code>known_hosts</code></td></tr>
+<tr><td><code>accept_new</code></td><td>Accept and persist unknown keys, reject changed keys (default)</td></tr>
+<tr><td><code>accept_all</code></td><td>Accept any host key (insecure, for testing only)</td></tr>
+</tbody></table>
+</div>
+<h2 id="remote-node-daemon"><a class="header" href="#remote-node-daemon">Remote Node Daemon</a></h2>
+<p>For structured communication beyond tmux send-keys, deploy <code>ennio-node</code> on the remote host:</p>
+<pre><code class="language-yaml">ssh_config:
+  strategy: node
+  node_config:
+    enabled: true
+    port: 9100
+    idle_timeout: 3600
+    workspace_root: /home/deploy/ennio-workspaces
+    ennio_binary_path: /usr/local/bin/ennio-node
+    auth_token: ${ENNIO_NODE_TOKEN}
+</code></pre>
+<p>The node daemon:</p>
+<ul>
+<li>Accepts gRPC calls over an SSH-tunneled port</li>
+<li>Manages workspaces and agent sessions locally on the remote host</li>
+<li>Reports health status back to the orchestrator</li>
+<li>Shuts down automatically after the idle timeout</li>
+</ul>
+<h3 id="node-management"><a class="header" href="#node-management">Node Management</a></h3>
+<pre><code class="language-bash">ennio node list                    # list all configured node projects
+ennio node status build-server     # check node health
+ennio node connect remote-project  # establish connection
+ennio node disconnect remote-project
+</code></pre>
+<h2 id="local-vs-remote-routing"><a class="header" href="#local-vs-remote-routing">Local vs Remote Routing</a></h2>
+<p>The session manager routes automatically based on config:</p>
+<div class="table-wrapper"><table><thead><tr><th><code>ssh_config</code> present?</th><th>Workspace</th><th>Runtime</th><th>Communication</th></tr></thead><tbody>
+<tr><td>No</td><td>Local worktree/clone</td><td>Local tmux/process</td><td>Direct</td></tr>
+<tr><td>Yes, strategy: tmux</td><td>Remote via SSH</td><td>Remote tmux via SSH</td><td>SSH send-keys</td></tr>
+<tr><td>Yes, strategy: node</td><td>Remote via gRPC</td><td>Remote via gRPC</td><td>SSH-tunneled gRPC</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="cost-tracking"><a class="header" href="#cost-tracking">Cost Tracking</a></h1>
+<p>Ennio includes a financial ledger for tracking AI agent costs using double-entry bookkeeping.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>Every token consumed by an agent session is recorded as a <code>CostEntry</code> and posted to the ledger as a double-entry <code>Transfer</code>. This gives you accurate, auditable cost data per session, per project, and globally.</p>
+<h2 id="cost-entries"><a class="header" href="#cost-entries">Cost Entries</a></h2>
+<p>Each cost entry records:</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>session_id</code></td><td>Which session incurred the cost</td></tr>
+<tr><td><code>project_id</code></td><td>Which project the session belongs to</td></tr>
+<tr><td><code>input_tokens</code></td><td>Number of input tokens consumed</td></tr>
+<tr><td><code>output_tokens</code></td><td>Number of output tokens generated</td></tr>
+<tr><td><code>cost_usd</code></td><td>Dollar cost of the API call</td></tr>
+<tr><td><code>model</code></td><td>Model used (e.g., <code>opus</code>, <code>sonnet</code>)</td></tr>
+<tr><td><code>timestamp</code></td><td>When the cost was incurred</td></tr>
+</tbody></table>
+</div>
+<h2 id="querying-costs"><a class="header" href="#querying-costs">Querying Costs</a></h2>
+<p>The ledger trait provides:</p>
+<pre><code>get_session_cost(session_id) → Decimal
+get_project_cost(project_id) → Decimal
+get_total_cost()             → Decimal
+</code></pre>
+<p>All monetary values use <code>rust_decimal::Decimal</code> for precision.</p>
+<h2 id="budgets"><a class="header" href="#budgets">Budgets</a></h2>
+<p>Set spending limits at three scopes:</p>
+<div class="table-wrapper"><table><thead><tr><th>Scope</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>Global</code></td><td>Total spend across all projects</td></tr>
+<tr><td><code>Project</code></td><td>Spend limit for a specific project</td></tr>
+<tr><td><code>Session</code></td><td>Spend limit for a single session</td></tr>
+</tbody></table>
+</div>
+<p>Each budget has a period:</p>
+<div class="table-wrapper"><table><thead><tr><th>Period</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>Daily</code></td><td>Resets every 24 hours</td></tr>
+<tr><td><code>Monthly</code></td><td>Resets every calendar month</td></tr>
+<tr><td><code>Total</code></td><td>Lifetime limit, never resets</td></tr>
+</tbody></table>
+</div>
+<h3 id="budget-checking"><a class="header" href="#budget-checking">Budget Checking</a></h3>
+<p>Before spawning expensive operations, check the budget:</p>
+<pre><code>check_budget(project_id, amount) → BudgetStatus
+</code></pre>
+<p><code>BudgetStatus</code> tells you:</p>
+<ul>
+<li><code>within_budget</code> — whether the amount fits</li>
+<li><code>used</code> / <code>limit</code> / <code>remaining</code> — current state</li>
+<li><code>percent_used</code> — utilization percentage</li>
+</ul>
+<h2 id="double-entry-bookkeeping"><a class="header" href="#double-entry-bookkeeping">Double-Entry Bookkeeping</a></h2>
+<p>The ledger uses proper accounting:</p>
+<ul>
+<li><strong>Asset accounts</strong> — track what you own</li>
+<li><strong>Liability accounts</strong> — track what you owe</li>
+<li><strong>Revenue accounts</strong> — track income</li>
+<li><strong>Expense accounts</strong> — track spending</li>
+</ul>
+<p>Every cost entry creates a <code>Transfer</code> that debits an expense account and credits an asset account, maintaining the accounting equation.</p>
+<h2 id="implementation"><a class="header" href="#implementation">Implementation</a></h2>
+<p>Ennio ships with <code>InMemoryLedger</code> — a thread-safe in-memory implementation using <code>RwLock</code>. The <code>Ledger</code> trait is async and designed for future backing stores (database, TigerBeetle, etc.).</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="notifications"><a class="header" href="#notifications">Notifications</a></h1>
+<p>Ennio sends notifications when reactions fire or sessions need attention.</p>
+<h2 id="notifier-plugins-1"><a class="header" href="#notifier-plugins-1">Notifier Plugins</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Plugin</th><th>Transport</th><th>Configuration</th></tr></thead><tbody>
+<tr><td><code>desktop</code></td><td><code>notify-send</code> (Linux) / <code>osascript</code> (macOS)</td><td>No config needed</td></tr>
+<tr><td><code>slack</code></td><td>Slack incoming webhook</td><td><code>webhook_url</code></td></tr>
+<tr><td><code>webhook</code></td><td>HTTP POST to any URL</td><td><code>url</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="configuration-4"><a class="header" href="#configuration-4">Configuration</a></h2>
+<h3 id="defining-notifiers"><a class="header" href="#defining-notifiers">Defining Notifiers</a></h3>
+<pre><code class="language-yaml">notifiers:
+  - name: team-slack
+    provider: slack
+    webhook_url: ${SLACK_WEBHOOK_URL}
+
+  - name: ops-alerts
+    provider: webhook
+    url: https://hooks.example.com/ennio
+
+  - name: local
+    provider: desktop
+</code></pre>
+<h3 id="default-notifiers"><a class="header" href="#default-notifiers">Default Notifiers</a></h3>
+<p>Set which notifiers are used by default:</p>
+<pre><code class="language-yaml">defaults:
+  notifiers:
+    - local
+    - team-slack
+</code></pre>
+<h3 id="notification-routing"><a class="header" href="#notification-routing">Notification Routing</a></h3>
+<p>Route specific reaction types to specific notifiers:</p>
+<pre><code class="language-yaml">notification_routing:
+  ci-failed:
+    - team-slack
+  agent-exited:
+    - team-slack
+    - ops-alerts
+  all-complete:
+    - local
+</code></pre>
+<p>If no routing rule matches, the default notifiers are used.</p>
+<h2 id="event-priority-1"><a class="header" href="#event-priority-1">Event Priority</a></h2>
+<p>Notifications carry a priority from the triggering event:</p>
+<div class="table-wrapper"><table><thead><tr><th>Priority</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>Info</code></td><td>Status updates (e.g., all sessions complete)</td></tr>
+<tr><td><code>Action</code></td><td>Something needs attention soon</td></tr>
+<tr><td><code>Urgent</code></td><td>Immediate attention (e.g., agent exited, needs input)</td></tr>
+<tr><td><code>Critical</code></td><td>System-level failure</td></tr>
+</tbody></table>
+</div>
+<p>Notifier implementations can use priority to adjust formatting (e.g., Slack emoji, desktop urgency level).</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="rest-api"><a class="header" href="#rest-api">REST API</a></h1>
+<p>Ennio exposes a REST API on the configured <code>port</code> (default: 3000).</p>
+<h2 id="authentication"><a class="header" href="#authentication">Authentication</a></h2>
+<p>All endpoints under <code>/api/v1</code> (except <code>/health</code>) require a bearer token when <code>api_token</code> is set in the configuration:</p>
+<pre><code>Authorization: Bearer &lt;token&gt;
+</code></pre>
+<p>The token is compared using constant-time SHA-256 hashing.</p>
+<h2 id="endpoints"><a class="header" href="#endpoints">Endpoints</a></h2>
+<h3 id="health-check"><a class="header" href="#health-check">Health Check</a></h3>
+<pre><code>GET /health
+</code></pre>
+<p>Returns <code>200 OK</code> with no authentication required. Use for load balancer health checks.</p>
+<hr />
+<h3 id="list-sessions"><a class="header" href="#list-sessions">List Sessions</a></h3>
+<pre><code>GET /api/v1/sessions
+</code></pre>
+<p>Returns all active sessions.</p>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">[
+  {
+    "id": "myapp-abc123",
+    "project": "my-app",
+    "status": "Working",
+    "activity": "Active",
+    "branch": "feat/auth",
+    "agent": "claude-code",
+    "created_at": "2026-03-04T10:00:00Z"
+  }
+]
+</code></pre>
+<hr />
+<h3 id="get-session"><a class="header" href="#get-session">Get Session</a></h3>
+<pre><code>GET /api/v1/sessions/{id}
+</code></pre>
+<p>Returns details for a specific session.</p>
+<p><strong>Response:</strong> <code>200</code> with session object, or <code>404</code> if not found.</p>
+<hr />
+<h3 id="spawn-session"><a class="header" href="#spawn-session">Spawn Session</a></h3>
+<pre><code>POST /api/v1/sessions
+</code></pre>
+<p><strong>Request Body:</strong></p>
+<pre><code class="language-json">{
+  "project": "my-app",
+  "issue": "42",
+  "prompt": "Add input validation",
+  "branch": "feat/validation",
+  "role": "implementer"
+}
+</code></pre>
+<p>All fields except <code>project</code> are optional. Provide either <code>issue</code> or <code>prompt</code>.</p>
+<p><strong>Response:</strong> <code>201 Created</code> with the new session object.</p>
+<hr />
+<h3 id="kill-session"><a class="header" href="#kill-session">Kill Session</a></h3>
+<pre><code>DELETE /api/v1/sessions/{id}
+</code></pre>
+<p>Terminates the agent and marks the session as <code>Killed</code>.</p>
+<p><strong>Response:</strong> <code>200 OK</code> or <code>404</code> if not found.</p>
+<hr />
+<h3 id="send-message-to-session"><a class="header" href="#send-message-to-session">Send Message to Session</a></h3>
+<pre><code>POST /api/v1/sessions/{id}/send
+</code></pre>
+<p><strong>Request Body:</strong></p>
+<pre><code class="language-json">{
+  "message": "Also add unit tests for the validation logic"
+}
+</code></pre>
+<p>Sends text input to the running agent via the runtime plugin.</p>
+<p><strong>Response:</strong> <code>200 OK</code> or <code>404</code> if session not found.</p>
+<h2 id="cors"><a class="header" href="#cors">CORS</a></h2>
+<p>Configure allowed origins:</p>
+<pre><code class="language-yaml">cors_origins:
+  - http://localhost:3000
+  - https://dashboard.example.com
+</code></pre>
+<p>If no origins are configured, CORS headers are not sent.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="cli-reference"><a class="header" href="#cli-reference">CLI Reference</a></h1>
+<h2 id="global-usage"><a class="header" href="#global-usage">Global Usage</a></h2>
+<pre><code>ennio [COMMAND]
+</code></pre>
+<h2 id="commands"><a class="header" href="#commands">Commands</a></h2>
+<h3 id="init"><a class="header" href="#init"><code>init</code></a></h3>
+<p>Initialize a new Ennio configuration file.</p>
+<pre><code class="language-bash">ennio init &lt;path&gt;
+</code></pre>
+<p>Creates <code>ennio.yaml</code> at the specified path with default values. Refuses to overwrite existing files.</p>
+<hr />
+<h3 id="start"><a class="header" href="#start"><code>start</code></a></h3>
+<p>Start the orchestrator lifecycle loop.</p>
+<pre><code class="language-bash">ennio start
+</code></pre>
+<p>Boots the full orchestrator: SQLite database, NATS connection, plugin registry, web API server, and lifecycle polling loop. Runs until interrupted (<code>Ctrl+C</code>) or stopped via <code>ennio stop</code>.</p>
+<hr />
+<h3 id="stop"><a class="header" href="#stop"><code>stop</code></a></h3>
+<p>Stop a running orchestrator.</p>
+<pre><code class="language-bash">ennio stop
+</code></pre>
+<p>Sends a shutdown signal via NATS.</p>
+<hr />
+<h3 id="status"><a class="header" href="#status"><code>status</code></a></h3>
+<p>Show status of all sessions.</p>
+<pre><code class="language-bash">ennio status [project]
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Argument</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>project</code></td><td>No</td><td>Filter sessions by project name</td></tr>
+</tbody></table>
+</div>
+<hr />
+<h3 id="spawn"><a class="header" href="#spawn"><code>spawn</code></a></h3>
+<p>Spawn a new agent session.</p>
+<pre><code class="language-bash">ennio spawn &lt;project&gt; [OPTIONS]
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Short</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--issue</code></td><td><code>-i</code></td><td>Issue ID to work on (fetched from tracker)</td></tr>
+<tr><td><code>--prompt</code></td><td><code>-p</code></td><td>Direct prompt for the agent</td></tr>
+<tr><td><code>--branch</code></td><td><code>-b</code></td><td>Git branch name to use</td></tr>
+<tr><td><code>--role</code></td><td><code>-r</code></td><td>Session role</td></tr>
+</tbody></table>
+</div>
+<p>Provide either <code>--issue</code> or <code>--prompt</code> (or both).</p>
+<hr />
+<h3 id="send"><a class="header" href="#send"><code>send</code></a></h3>
+<p>Send a message to a running session.</p>
+<pre><code class="language-bash">ennio send &lt;session-id&gt; &lt;message&gt;
+</code></pre>
+<p>The message is delivered to the agent via the runtime plugin (e.g., tmux send-keys).</p>
+<hr />
+<h3 id="session"><a class="header" href="#session"><code>session</code></a></h3>
+<p>Manage individual sessions.</p>
+<h4 id="session-info"><a class="header" href="#session-info"><code>session info</code></a></h4>
+<pre><code class="language-bash">ennio session info &lt;id&gt;
+</code></pre>
+<p>Displays session details including status, activity, branch, PR URL, and recent events.</p>
+<h4 id="session-kill"><a class="header" href="#session-kill"><code>session kill</code></a></h4>
+<pre><code class="language-bash">ennio session kill &lt;id&gt;
+</code></pre>
+<p>Terminates the agent and marks the session as <code>Killed</code>.</p>
+<h4 id="session-restore"><a class="header" href="#session-restore"><code>session restore</code></a></h4>
+<pre><code class="language-bash">ennio session restore &lt;id&gt;
+</code></pre>
+<p>Restarts an <code>Exited</code> session in its existing workspace.</p>
+<h4 id="session-list"><a class="header" href="#session-list"><code>session list</code></a></h4>
+<pre><code class="language-bash">ennio session list [project]
+</code></pre>
+<p>Lists all sessions, optionally filtered by project.</p>
+<hr />
+<h3 id="dashboard"><a class="header" href="#dashboard"><code>dashboard</code></a></h3>
+<p>Open the web dashboard.</p>
+<pre><code class="language-bash">ennio dashboard [--port &lt;port&gt;]
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--port</code></td><td>3000</td><td>Port for the dashboard web server</td></tr>
+</tbody></table>
+</div>
+<hr />
+<h3 id="open"><a class="header" href="#open"><code>open</code></a></h3>
+<p>Open a session's terminal.</p>
+<pre><code class="language-bash">ennio open &lt;session-id&gt;
+</code></pre>
+<p>Prints the <code>tmux attach</code> command to connect to the agent's terminal session.</p>
+<hr />
+<h3 id="node"><a class="header" href="#node"><code>node</code></a></h3>
+<p>Manage remote node daemons.</p>
+<h4 id="node-status"><a class="header" href="#node-status"><code>node status</code></a></h4>
+<pre><code class="language-bash">ennio node status [host]
+</code></pre>
+<p>Check health of a remote <code>ennio-node</code> daemon.</p>
+<h4 id="node-list"><a class="header" href="#node-list"><code>node list</code></a></h4>
+<pre><code class="language-bash">ennio node list
+</code></pre>
+<p>List all projects configured with remote node connections.</p>
+<h4 id="node-connect"><a class="header" href="#node-connect"><code>node connect</code></a></h4>
+<pre><code class="language-bash">ennio node connect &lt;project&gt;
+</code></pre>
+<p>Establish an SSH tunnel and connect to the remote node for the specified project.</p>
+<h4 id="node-disconnect"><a class="header" href="#node-disconnect"><code>node disconnect</code></a></h4>
+<pre><code class="language-bash">ennio node disconnect &lt;project&gt;
+</code></pre>
+<p>Disconnect and shut down the remote node.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="grpc-node-protocol"><a class="header" href="#grpc-node-protocol">gRPC Node Protocol</a></h1>
+<p>The <code>ennio-node</code> daemon runs on remote machines and communicates with the orchestrator via gRPC over an SSH tunnel.</p>
+<h2 id="running-the-daemon"><a class="header" href="#running-the-daemon">Running the Daemon</a></h2>
+<pre><code class="language-bash">ennio-node [OPTIONS]
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Default</th><th>Env Var</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--port</code></td><td>9100</td><td>—</td><td>gRPC listen port</td></tr>
+<tr><td><code>--idle-timeout</code></td><td>3600</td><td>—</td><td>Seconds before auto-shutdown</td></tr>
+<tr><td><code>--workspace-root</code></td><td>—</td><td>—</td><td>Root directory for workspaces</td></tr>
+<tr><td><code>--auth-token</code></td><td>—</td><td><code>ENNIO_NODE_AUTH_TOKEN</code></td><td>Bearer token for authentication</td></tr>
+</tbody></table>
+</div>
+<h2 id="authentication-1"><a class="header" href="#authentication-1">Authentication</a></h2>
+<p>When <code>--auth-token</code> is set, all gRPC calls must include a <code>authorization</code> metadata key with value <code>Bearer &lt;token&gt;</code>. The token is compared using constant-time SHA-256 hashing.</p>
+<p>If no token is set, the daemon relies on SSH tunnel isolation for security (only reachable via the tunnel).</p>
+<h2 id="connection-flow"><a class="header" href="#connection-flow">Connection Flow</a></h2>
+<pre><code>Orchestrator                     Remote Host
+    │                                │
+    ├── SSH connect ────────────────►│
+    ├── Port forward (tunnel) ──────►│ :9100
+    ├── gRPC HealthCheck ──────────►│
+    │◄──────────────── Serving ──────┤
+    ├── gRPC CreateWorkspace ──────►│
+    │◄──────────── workspace path ───┤
+    ├── gRPC SpawnAgent ───────────►│
+    │◄──────────── session id ───────┤
+    │         ...polling...          │
+    ├── gRPC Disconnect ───────────►│
+    │◄──────────── shutdown ─────────┤
+    │                                │
+</code></pre>
+<h2 id="idle-timeout"><a class="header" href="#idle-timeout">Idle Timeout</a></h2>
+<p>The daemon automatically shuts down after <code>--idle-timeout</code> seconds of no gRPC activity. This prevents orphaned daemons from consuming resources on remote machines. The orchestrator re-deploys the daemon on next connection.</p>
+<h2 id="service-definition"><a class="header" href="#service-definition">Service Definition</a></h2>
+<p>The gRPC service is defined in <code>crates/ennio-proto/</code> using Protocol Buffers. The orchestrator's <code>RemoteNode</code> client in <code>ennio-ssh</code> handles connection establishment, health checking, and all RPC calls.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h1>
+<h2 id="system-design"><a class="header" href="#system-design">System Design</a></h2>
+<p>Ennio follows a modular, plugin-driven architecture. The core orchestration loop is decoupled from specific agent implementations, runtimes, and external services through trait-based plugin slots.</p>
+<pre><code>┌─────────────────────────────────────────────────────┐
+│                    ennio-cli                         │
+│              (clap CLI binary)                       │
+├─────────────────────────────────────────────────────┤
+│                  ennio-services                      │
+│  ┌──────────────┐  ┌─────────────┐  ┌───────────┐  │
+│  │ SessionMgr   │  │ LifecycleMgr│  │ EventBus  │  │
+│  │ (spawn/kill/ │  │ (poll/react/│  │ (broadcast│  │
+│  │  restore)    │  │  escalate)  │  │  channel)  │  │
+│  └──────┬───────┘  └──────┬──────┘  └─────┬─────┘  │
+├─────────┼─────────────────┼────────────────┼────────┤
+│         │           ennio-plugins          │         │
+│  ┌──────┴──────────────────┴───────────────┴──────┐ │
+│  │ Agent │ Runtime │ Workspace │ Tracker │ SCM │...│ │
+│  └────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────┤
+│  ennio-core    │  ennio-db   │  ennio-ssh           │
+│  (types,       │  (SQLite    │  (SSH client,         │
+│   config,      │   persist)  │   strategies)         │
+│   traits)      │             │                       │
+├────────────────┼─────────────┼───────────────────────┤
+│  ennio-web     │  ennio-nats │  ennio-ledger         │
+│  (REST API)    │  (messaging)│  (cost tracking)      │
+└────────────────┴─────────────┴───────────────────────┘
+</code></pre>
+<h2 id="data-flow"><a class="header" href="#data-flow">Data Flow</a></h2>
+<h3 id="session-spawn"><a class="header" href="#session-spawn">Session Spawn</a></h3>
+<ol>
+<li>CLI or API receives spawn request</li>
+<li><strong>SessionManager</strong> resolves plugins for the project</li>
+<li><strong>Workspace</strong> plugin creates isolated working directory</li>
+<li><strong>Tracker</strong> plugin fetches issue details (if <code>--issue</code> provided)</li>
+<li><strong>Runtime</strong> plugin launches the agent</li>
+<li>Session is persisted to SQLite and an event is emitted</li>
+</ol>
+<h3 id="lifecycle-polling-1"><a class="header" href="#lifecycle-polling-1">Lifecycle Polling</a></h3>
+<ol>
+<li><strong>LifecycleManager</strong> iterates over active sessions</li>
+<li>For each session, queries <strong>Tracker</strong> and <strong>SCM</strong> plugins for external state</li>
+<li>Compares external state against current session status</li>
+<li>Triggers status transitions and fires matching <strong>reactions</strong></li>
+<li>Events are emitted to the <strong>EventBus</strong> (in-memory broadcast) and persisted to SQLite</li>
+<li>Events are optionally published to NATS for external consumers</li>
+</ol>
+<h3 id="event-system"><a class="header" href="#event-system">Event System</a></h3>
+<p>Events flow through two channels:</p>
+<ul>
+<li><strong>EventBus</strong> — tokio broadcast channel for in-process subscribers (web API, lifecycle manager)</li>
+<li><strong>NATS</strong> — external messaging for distributed setups (multiple orchestrator instances, external monitoring)</li>
+<li><strong>SQLite</strong> — persistent event log for history and debugging</li>
+</ul>
+<h2 id="key-design-decisions"><a class="header" href="#key-design-decisions">Key Design Decisions</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Decision</th><th>Rationale</th></tr></thead><tbody>
+<tr><td>Trait-based plugins</td><td>Swap implementations without changing orchestration logic</td></tr>
+<tr><td>SQLite over PostgreSQL</td><td>Zero-config, single-file database, embedded in the binary</td></tr>
+<tr><td>Tokio broadcast for events</td><td>Lock-free, multi-consumer, backpressure-aware</td></tr>
+<tr><td>SSH via <code>russh</code> (pure Rust)</td><td>No dependency on system <code>libssh</code>, works cross-platform</td></tr>
+<tr><td><code>SecretString</code> for tokens</td><td>Prevents accidental logging of secrets</td></tr>
+<tr><td>Constant-time token comparison</td><td>Prevents timing attacks on API auth</td></tr>
+<tr><td>Git worktrees as default workspace</td><td>Fast creation, shared git objects, minimal disk usage</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="crate-map"><a class="header" href="#crate-map">Crate Map</a></h1>
+<p>Ennio is a Rust workspace with 15 crates. This page describes each crate's purpose, dependencies, and public API surface.</p>
+<h2 id="dependency-graph"><a class="header" href="#dependency-graph">Dependency Graph</a></h2>
+<pre><code>ennio-cli ──► ennio-services ──► ennio-core
+    │              │                  ▲
+    │              ├──► ennio-db ─────┘
+    │              ├──► ennio-nats ───┘
+    │              └──► ennio-plugins ──► ennio-ssh ──► ennio-core
+    │                       │
+    ├──► ennio-web ─────────┘
+    ├──► ennio-tui
+    └──► ennio-observe
+
+ennio-node ──► ennio-proto ──► ennio-core
+    │              │
+    └──► ennio-ssh ┘
+
+ennio-dashboard (standalone WASM, no workspace deps)
+ennio-ledger ──► (standalone, rust_decimal)
+ennio-ml ──► ennio-core
+</code></pre>
+<h2 id="crate-details"><a class="header" href="#crate-details">Crate Details</a></h2>
+<h3 id="ennio-core"><a class="header" href="#ennio-core"><code>ennio-core</code></a></h3>
+<p>Shared foundation crate. No heavy dependencies.</p>
+<ul>
+<li><strong>Types</strong>: <code>SessionId</code>, <code>ProjectId</code>, <code>EventId</code> (validated newtypes)</li>
+<li><strong>Config</strong>: <code>OrchestratorConfig</code>, <code>ProjectConfig</code>, <code>SshConnectionConfig</code></li>
+<li><strong>Session</strong>: <code>Session</code>, <code>SessionStatus</code> (16 states), <code>ActivityState</code></li>
+<li><strong>Events</strong>: <code>OrchestratorEvent</code>, <code>EventType</code> (30 variants), <code>EventPriority</code></li>
+<li><strong>Traits</strong>: All 7 plugin traits (<code>Agent</code>, <code>Runtime</code>, <code>Workspace</code>, <code>Tracker</code>, <code>Scm</code>, <code>Notifier</code>, <code>Terminal</code>)</li>
+<li><strong>Paths</strong>: Workspace path construction utilities</li>
+</ul>
+<h3 id="ennio-services"><a class="header" href="#ennio-services"><code>ennio-services</code></a></h3>
+<p>Core orchestration logic.</p>
+<ul>
+<li><strong>SessionManager</strong> — spawn, kill, restore, list, send</li>
+<li><strong>LifecycleManager</strong> — poll loop, status transitions, reaction engine</li>
+<li><strong>EventBus</strong> — tokio broadcast channel for in-process event distribution</li>
+<li><strong>ConfigLoader</strong> — config file discovery and loading</li>
+<li><strong>PluginRegistry</strong> — stores plugin instances for all 7 slots</li>
+</ul>
+<h3 id="ennio-plugins"><a class="header" href="#ennio-plugins"><code>ennio-plugins</code></a></h3>
+<p>Concrete plugin implementations.</p>
+<ul>
+<li>4 agent plugins, 3 runtime plugins, 2 workspace plugins</li>
+<li>2 tracker plugins, 1 SCM plugin, 3 notifier plugins, 1 terminal plugin</li>
+<li>See <a href="reference/../guides/plugins.html">Plugin System</a> for the full list</li>
+</ul>
+<h3 id="ennio-db"><a class="header" href="#ennio-db"><code>ennio-db</code></a></h3>
+<p>SQLite persistence layer.</p>
+<ul>
+<li>Connection pool with WAL journal mode</li>
+<li>SQL migrations (auto-run on startup)</li>
+<li>Repository functions: sessions, events, projects, metrics</li>
+<li>Uses <code>sqlx</code> with compile-time-unchecked queries</li>
+</ul>
+<h3 id="ennio-ssh"><a class="header" href="#ennio-ssh"><code>ennio-ssh</code></a></h3>
+<p>SSH client and remote execution.</p>
+<ul>
+<li><strong>SshClient</strong> — connect, execute commands, upload/download files</li>
+<li><strong>Strategies</strong>: <code>TmuxStrategy</code>, <code>TmateStrategy</code>, <code>RemoteControlStrategy</code></li>
+<li><strong>SshRuntime</strong> — runtime plugin backed by SSH + strategy</li>
+<li><strong>RemoteNode</strong> — gRPC client for <code>ennio-node</code> over SSH tunnel</li>
+<li><strong>Workspaces</strong>: <code>SshWorktreeWorkspace</code>, <code>SshCloneWorkspace</code></li>
+</ul>
+<h3 id="ennio-node"><a class="header" href="#ennio-node"><code>ennio-node</code></a></h3>
+<p>Remote gRPC daemon binary.</p>
+<ul>
+<li>Runs on remote machines, managed by orchestrator over SSH</li>
+<li>Accepts workspace creation, agent spawn, and health check RPCs</li>
+<li>Bearer token authentication (optional)</li>
+<li>Auto-shutdown after idle timeout</li>
+</ul>
+<h3 id="ennio-proto"><a class="header" href="#ennio-proto"><code>ennio-proto</code></a></h3>
+<p>Protobuf service definitions and generated code.</p>
+<ul>
+<li><code>.proto</code> files defining the node service</li>
+<li><code>tonic</code>/<code>prost</code> code generation via <code>build.rs</code></li>
+<li>Type conversions between proto types and <code>ennio-core</code> types</li>
+</ul>
+<h3 id="ennio-web"><a class="header" href="#ennio-web"><code>ennio-web</code></a></h3>
+<p>REST API server.</p>
+<ul>
+<li>Built on <code>axum</code></li>
+<li>5 authenticated endpoints + 1 health check</li>
+<li>Bearer token middleware</li>
+<li>CORS support</li>
+</ul>
+<h3 id="ennio-tui"><a class="header" href="#ennio-tui"><code>ennio-tui</code></a></h3>
+<p>Terminal dashboard.</p>
+<ul>
+<li>Built on <code>ratatui</code> + <code>crossterm</code></li>
+<li>Session table with color-coded status</li>
+<li>Detail panel and event log</li>
+<li>Keyboard-driven navigation</li>
+</ul>
+<h3 id="ennio-dashboard"><a class="header" href="#ennio-dashboard"><code>ennio-dashboard</code></a></h3>
+<p>Web dashboard (Dioxus WASM).</p>
+<ul>
+<li>Session cards with status, activity, branch, PR info</li>
+<li>Attention zones for sessions needing action</li>
+<li>Standalone WASM binary (no workspace crate deps)</li>
+</ul>
+<h3 id="ennio-nats"><a class="header" href="#ennio-nats"><code>ennio-nats</code></a></h3>
+<p>NATS messaging layer.</p>
+<ul>
+<li>Topic hierarchy builders and subscribe patterns</li>
+<li>Typed event publishing</li>
+<li>Client and subscription wrappers around <code>async-nats</code></li>
+</ul>
+<h3 id="ennio-ledger"><a class="header" href="#ennio-ledger"><code>ennio-ledger</code></a></h3>
+<p>Cost tracking and budgets.</p>
+<ul>
+<li><code>Ledger</code> async trait with <code>InMemoryLedger</code> implementation</li>
+<li>Double-entry bookkeeping (accounts, transfers)</li>
+<li>Budget scopes (global/project/session) and periods (daily/monthly/total)</li>
+<li><code>rust_decimal::Decimal</code> for monetary precision</li>
+</ul>
+<h3 id="ennio-ml"><a class="header" href="#ennio-ml"><code>ennio-ml</code></a></h3>
+<p>ML trait interfaces (no implementations).</p>
+<ul>
+<li><code>SessionOutcomePredictor</code> — predict success probability, duration, cost</li>
+<li><code>AnomalyDetector</code> — detect anomalous metrics</li>
+<li><code>CostPredictor</code> — estimate remaining and total cost</li>
+<li>Infrastructure-only: traits for future ML backing</li>
+</ul>
+<h3 id="ennio-observe"><a class="header" href="#ennio-observe"><code>ennio-observe</code></a></h3>
+<p>OpenTelemetry integration.</p>
+<ul>
+<li>Tracing subscriber setup</li>
+<li>OTLP exporter configuration</li>
+<li>Prometheus metrics endpoint</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="configuration-reference"><a class="header" href="#configuration-reference">Configuration Reference</a></h1>
+<p>Complete reference for <code>ennio.yaml</code>. All fields listed with types, defaults, and descriptions.</p>
+<h2 id="top-level-fields"><a class="header" href="#top-level-fields">Top-Level Fields</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>port</code></td><td><code>u16</code></td><td><code>3000</code></td><td>Web API listen port</td></tr>
+<tr><td><code>terminal_port</code></td><td><code>u16</code></td><td><code>3001</code></td><td>Terminal WebSocket port</td></tr>
+<tr><td><code>direct_terminal_port</code></td><td><code>u16?</code></td><td>—</td><td>Direct terminal access port</td></tr>
+<tr><td><code>ready_threshold</code></td><td><code>Duration</code></td><td><code>2s</code></td><td>Time before a session is considered ready</td></tr>
+<tr><td><code>defaults</code></td><td><code>DefaultPlugins</code></td><td>see below</td><td>Global plugin defaults</td></tr>
+<tr><td><code>projects</code></td><td><code>[ProjectConfig]</code></td><td><code>[]</code></td><td>List of project configurations</td></tr>
+<tr><td><code>notifiers</code></td><td><code>[NotifierConfig]</code></td><td><code>[]</code></td><td>Notification channel definitions</td></tr>
+<tr><td><code>notification_routing</code></td><td><code>Map&lt;String, [String]&gt;</code></td><td><code>{}</code></td><td>Route reaction types to specific notifiers</td></tr>
+<tr><td><code>reactions</code></td><td><code>Map&lt;String, ReactionConfig&gt;</code></td><td>built-in set</td><td>Global reaction overrides</td></tr>
+<tr><td><code>database_url</code></td><td><code>String?</code></td><td><code>sqlite::memory:</code></td><td>SQLite database URL</td></tr>
+<tr><td><code>nats_url</code></td><td><code>String?</code></td><td><code>nats://127.0.0.1:4222</code></td><td>NATS server URL</td></tr>
+<tr><td><code>api_token</code></td><td><code>SecretString?</code></td><td>—</td><td>Bearer token for API authentication</td></tr>
+<tr><td><code>cors_origins</code></td><td><code>[String]</code></td><td><code>[]</code></td><td>Allowed CORS origins</td></tr>
+</tbody></table>
+</div>
+<h2 id="defaultplugins"><a class="header" href="#defaultplugins">DefaultPlugins</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>runtime</code></td><td><code>String</code></td><td><code>"tmux"</code></td><td>Default runtime plugin</td></tr>
+<tr><td><code>agent</code></td><td><code>String</code></td><td><code>"claude-code"</code></td><td>Default agent plugin</td></tr>
+<tr><td><code>workspace</code></td><td><code>String</code></td><td><code>"worktree"</code></td><td>Default workspace plugin</td></tr>
+<tr><td><code>notifiers</code></td><td><code>[String]</code></td><td><code>[]</code></td><td>Default notifier names</td></tr>
+</tbody></table>
+</div>
+<h2 id="projectconfig"><a class="header" href="#projectconfig">ProjectConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>name</code></td><td><code>String</code></td><td><strong>required</strong></td><td>Unique project identifier</td></tr>
+<tr><td><code>project_id</code></td><td><code>ProjectId?</code></td><td>—</td><td>Explicit project ID (auto-derived from name if omitted)</td></tr>
+<tr><td><code>repo</code></td><td><code>String</code></td><td><strong>required</strong></td><td>Git repository URL</td></tr>
+<tr><td><code>path</code></td><td><code>PathBuf</code></td><td><strong>required</strong></td><td>Absolute local path to the repository</td></tr>
+<tr><td><code>default_branch</code></td><td><code>String</code></td><td><code>"main"</code></td><td>Default git branch</td></tr>
+<tr><td><code>session_prefix</code></td><td><code>String?</code></td><td>—</td><td>Prefix for generated session IDs</td></tr>
+<tr><td><code>runtime</code></td><td><code>String?</code></td><td>—</td><td>Override default runtime</td></tr>
+<tr><td><code>agent</code></td><td><code>String?</code></td><td>—</td><td>Override default agent</td></tr>
+<tr><td><code>workspace</code></td><td><code>String?</code></td><td>—</td><td>Override default workspace</td></tr>
+<tr><td><code>tracker_config</code></td><td><code>TrackerConfig?</code></td><td>—</td><td>Issue tracker configuration</td></tr>
+<tr><td><code>scm_config</code></td><td><code>ScmConfig?</code></td><td>—</td><td>Source control configuration</td></tr>
+<tr><td><code>symlinks</code></td><td><code>[SymlinkConfig]</code></td><td><code>[]</code></td><td>Symlinks to create in workspace</td></tr>
+<tr><td><code>post_create</code></td><td><code>[String]</code></td><td><code>[]</code></td><td>Shell commands run after workspace creation</td></tr>
+<tr><td><code>agent_config</code></td><td><code>AgentSpecificConfig?</code></td><td>—</td><td>Agent-specific settings</td></tr>
+<tr><td><code>reactions</code></td><td><code>Map&lt;String, ReactionConfig&gt;</code></td><td><code>{}</code></td><td>Project-specific reaction overrides</td></tr>
+<tr><td><code>agent_rules</code></td><td><code>[String]</code></td><td><code>[]</code></td><td>Instructions passed to the agent</td></tr>
+<tr><td><code>max_sessions</code></td><td><code>u32?</code></td><td>—</td><td>Maximum concurrent sessions</td></tr>
+<tr><td><code>ssh_config</code></td><td><code>SshConnectionConfig?</code></td><td>—</td><td>Remote execution config (enables SSH mode)</td></tr>
+</tbody></table>
+</div>
+<h2 id="trackerconfig"><a class="header" href="#trackerconfig">TrackerConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>provider</code></td><td><code>String</code></td><td><code>"github"</code> or <code>"linear"</code></td></tr>
+<tr><td><code>owner</code></td><td><code>String</code></td><td>Repository/organization owner</td></tr>
+<tr><td><code>repo</code></td><td><code>String</code></td><td>Repository name</td></tr>
+<tr><td><code>token</code></td><td><code>SecretString</code></td><td>API token</td></tr>
+</tbody></table>
+</div>
+<h2 id="scmconfig"><a class="header" href="#scmconfig">ScmConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>provider</code></td><td><code>String</code></td><td><code>"github"</code></td></tr>
+<tr><td><code>owner</code></td><td><code>String</code></td><td>Repository owner</td></tr>
+<tr><td><code>repo</code></td><td><code>String</code></td><td>Repository name</td></tr>
+<tr><td><code>token</code></td><td><code>SecretString</code></td><td>API token</td></tr>
+</tbody></table>
+</div>
+<h2 id="notifierconfig"><a class="header" href="#notifierconfig">NotifierConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>name</code></td><td><code>String</code></td><td>Unique notifier identifier</td></tr>
+<tr><td><code>provider</code></td><td><code>String</code></td><td><code>"desktop"</code>, <code>"slack"</code>, or <code>"webhook"</code></td></tr>
+<tr><td><code>webhook_url</code></td><td><code>String?</code></td><td>Slack webhook URL (slack provider)</td></tr>
+<tr><td><code>url</code></td><td><code>String?</code></td><td>Webhook URL (webhook provider)</td></tr>
+</tbody></table>
+</div>
+<h2 id="reactionconfig"><a class="header" href="#reactionconfig">ReactionConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>action</code></td><td><code>ReactionAction</code></td><td><strong>required</strong></td><td><code>send_to_agent</code>, <code>notify</code>, or <code>auto_merge</code></td></tr>
+<tr><td><code>message</code></td><td><code>String?</code></td><td>—</td><td>Message to send (for <code>send_to_agent</code>)</td></tr>
+<tr><td><code>max_retries</code></td><td><code>u32?</code></td><td>—</td><td>Maximum retry attempts</td></tr>
+<tr><td><code>escalation_timeout</code></td><td><code>u64?</code></td><td>—</td><td>Seconds before escalating</td></tr>
+<tr><td><code>priority</code></td><td><code>EventPriority?</code></td><td>—</td><td>Notification priority</td></tr>
+</tbody></table>
+</div>
+<h2 id="agentspecificconfig"><a class="header" href="#agentspecificconfig">AgentSpecificConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>model</code></td><td><code>String?</code></td><td>Model to use (e.g., <code>"opus"</code>, <code>"sonnet"</code>)</td></tr>
+<tr><td><code>max_turns</code></td><td><code>u32?</code></td><td>Maximum conversation turns</td></tr>
+</tbody></table>
+</div>
+<h2 id="symlinkconfig"><a class="header" href="#symlinkconfig">SymlinkConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>source</code></td><td><code>String</code></td><td>Source path (relative to repo root)</td></tr>
+<tr><td><code>target</code></td><td><code>String</code></td><td>Target path in workspace</td></tr>
+</tbody></table>
+</div>
+<h2 id="sshconnectionconfig"><a class="header" href="#sshconnectionconfig">SshConnectionConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>host</code></td><td><code>String</code></td><td><strong>required</strong></td><td>Remote hostname</td></tr>
+<tr><td><code>port</code></td><td><code>u16</code></td><td><code>22</code></td><td>SSH port</td></tr>
+<tr><td><code>username</code></td><td><code>String</code></td><td><strong>required</strong></td><td>SSH username</td></tr>
+<tr><td><code>auth</code></td><td><code>SshAuthConfig</code></td><td><strong>required</strong></td><td>Authentication method</td></tr>
+<tr><td><code>strategy</code></td><td><code>SshStrategyConfig</code></td><td><strong>required</strong></td><td>Remote execution strategy</td></tr>
+<tr><td><code>connection_timeout</code></td><td><code>Duration</code></td><td><code>30s</code></td><td>SSH connection timeout</td></tr>
+<tr><td><code>keepalive_interval</code></td><td><code>Duration?</code></td><td>—</td><td>SSH keepalive interval</td></tr>
+<tr><td><code>host_key_policy</code></td><td><code>HostKeyPolicyConfig</code></td><td><code>accept_new</code></td><td>Host key verification policy</td></tr>
+<tr><td><code>known_hosts_path</code></td><td><code>PathBuf?</code></td><td>—</td><td>Path to known_hosts file</td></tr>
+<tr><td><code>node_config</code></td><td><code>NodeConnectionConfig?</code></td><td>—</td><td>Remote node daemon config</td></tr>
+</tbody></table>
+</div>
+<h3 id="sshauthconfig-variants"><a class="header" href="#sshauthconfig-variants">SshAuthConfig Variants</a></h3>
+<p><strong>Key authentication:</strong></p>
+<pre><code class="language-yaml">auth:
+  type: key
+  path: ~/.ssh/id_ed25519
+  passphrase: ${SSH_PASSPHRASE}  # optional
+</code></pre>
+<p><strong>Agent authentication:</strong></p>
+<pre><code class="language-yaml">auth:
+  type: agent
+</code></pre>
+<p><strong>Password authentication:</strong></p>
+<pre><code class="language-yaml">auth:
+  type: password
+  password: ${SSH_PASSWORD}
+</code></pre>
+<h3 id="hostkeypolicyconfig"><a class="header" href="#hostkeypolicyconfig">HostKeyPolicyConfig</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>strict</code></td><td>Reject unknown or changed host keys</td></tr>
+<tr><td><code>accept_new</code></td><td>Accept unknown keys, reject changed keys (default)</td></tr>
+<tr><td><code>accept_all</code></td><td>Accept any key (insecure)</td></tr>
+</tbody></table>
+</div>
+<h2 id="nodeconnectionconfig"><a class="header" href="#nodeconnectionconfig">NodeConnectionConfig</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>port</code></td><td><code>u16</code></td><td><code>9100</code></td><td>gRPC listen port on remote host</td></tr>
+<tr><td><code>idle_timeout</code></td><td><code>Duration</code></td><td><code>3600s</code></td><td>Auto-shutdown after idle</td></tr>
+<tr><td><code>workspace_root</code></td><td><code>PathBuf?</code></td><td>—</td><td>Root directory for workspaces</td></tr>
+<tr><td><code>ennio_binary_path</code></td><td><code>PathBuf?</code></td><td>—</td><td>Path to <code>ennio-node</code> binary on remote</td></tr>
+<tr><td><code>auth_token</code></td><td><code>SecretString?</code></td><td>—</td><td>Bearer token for gRPC auth</td></tr>
+</tbody></table>
+</div>
+<h2 id="full-example"><a class="header" href="#full-example">Full Example</a></h2>
+<pre><code class="language-yaml">port: 3000
+terminal_port: 3001
+api_token: ${ENNIO_API_TOKEN}
+database_url: sqlite:ennio.db
+nats_url: nats://127.0.0.1:4222
+cors_origins:
+  - http://localhost:3000
+
+defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+  notifiers:
+    - desktop
+
+notifiers:
+  - name: desktop
+    provider: desktop
+  - name: team-slack
+    provider: slack
+    webhook_url: ${SLACK_WEBHOOK}
+
+notification_routing:
+  agent-exited:
+    - team-slack
+    - desktop
+  all-complete:
+    - desktop
+
+reactions:
+  approved-and-green:
+    action: auto_merge
+
+projects:
+  - name: backend
+    repo: git@github.com:org/backend.git
+    path: /home/user/repos/backend
+    default_branch: main
+    max_sessions: 3
+    session_prefix: be
+    tracker_config:
+      provider: github
+      owner: org
+      repo: backend
+      token: ${GITHUB_TOKEN}
+    scm_config:
+      provider: github
+      owner: org
+      repo: backend
+      token: ${GITHUB_TOKEN}
+    symlinks:
+      - source: ../.env
+        target: .env
+    post_create:
+      - cargo build
+    agent_config:
+      model: opus
+      max_turns: 200
+    agent_rules:
+      - "Write tests for all new code"
+      - "Use conventional commits"
+
+  - name: remote-ml
+    repo: git@github.com:org/ml-pipeline.git
+    path: /home/gpu-user/repos/ml-pipeline
+    agent: aider
+    ssh_config:
+      host: gpu-server.internal
+      username: gpu-user
+      auth:
+        type: key
+        path: ~/.ssh/id_ed25519
+      strategy: node
+      node_config:
+        port: 9100
+        workspace_root: /home/gpu-user/workspaces
+        auth_token: ${NODE_AUTH_TOKEN}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="event-system-1"><a class="header" href="#event-system-1">Event System</a></h1>
+<p>Ennio emits structured events for every significant state change. Events flow through multiple channels for real-time and historical access.</p>
+<h2 id="event-structure"><a class="header" href="#event-structure">Event Structure</a></h2>
+<p>Every event contains:</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>EventId</code></td><td>Unique identifier</td></tr>
+<tr><td><code>event_type</code></td><td><code>EventType</code></td><td>What happened</td></tr>
+<tr><td><code>priority</code></td><td><code>EventPriority</code></td><td>Severity level</td></tr>
+<tr><td><code>session_id</code></td><td><code>SessionId</code></td><td>Affected session</td></tr>
+<tr><td><code>project_id</code></td><td><code>ProjectId</code></td><td>Owning project</td></tr>
+<tr><td><code>timestamp</code></td><td><code>DateTime&lt;Utc&gt;</code></td><td>When it happened</td></tr>
+<tr><td><code>message</code></td><td><code>String</code></td><td>Human-readable description</td></tr>
+<tr><td><code>data</code></td><td><code>JSON</code></td><td>Structured payload</td></tr>
+</tbody></table>
+</div>
+<h2 id="event-types"><a class="header" href="#event-types">Event Types</a></h2>
+<h3 id="session-events"><a class="header" href="#session-events">Session Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>SessionSpawned</code></td><td>New session created and agent launched</td></tr>
+<tr><td><code>SessionWorking</code></td><td>Agent began active work</td></tr>
+<tr><td><code>SessionExited</code></td><td>Agent process exited unexpectedly</td></tr>
+<tr><td><code>SessionKilled</code></td><td>Session manually terminated</td></tr>
+<tr><td><code>SessionRestored</code></td><td>Exited session restarted</td></tr>
+<tr><td><code>SessionCleaned</code></td><td>Session workspace cleaned up</td></tr>
+</tbody></table>
+</div>
+<h3 id="status-events"><a class="header" href="#status-events">Status Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>StatusChanged</code></td><td>Session transitioned to a new status</td></tr>
+<tr><td><code>ActivityChanged</code></td><td>Session activity state changed</td></tr>
+</tbody></table>
+</div>
+<h3 id="pull-request-events"><a class="header" href="#pull-request-events">Pull Request Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>PrCreated</code></td><td>Pull request created</td></tr>
+<tr><td><code>PrUpdated</code></td><td>Pull request updated (new commits)</td></tr>
+<tr><td><code>PrMerged</code></td><td>Pull request merged</td></tr>
+<tr><td><code>PrClosed</code></td><td>Pull request closed without merging</td></tr>
+</tbody></table>
+</div>
+<h3 id="ci-events"><a class="header" href="#ci-events">CI Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>CiPassing</code></td><td>CI checks are green</td></tr>
+<tr><td><code>CiFailing</code></td><td>CI checks failed</td></tr>
+<tr><td><code>CiFixSent</code></td><td>Agent pushed a CI fix</td></tr>
+<tr><td><code>CiFixFailed</code></td><td>CI fix attempt also failed</td></tr>
+</tbody></table>
+</div>
+<h3 id="review-events"><a class="header" href="#review-events">Review Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>ReviewPending</code></td><td>Awaiting code review</td></tr>
+<tr><td><code>ReviewApproved</code></td><td>PR approved</td></tr>
+<tr><td><code>ReviewChangesRequested</code></td><td>Reviewer requested changes</td></tr>
+<tr><td><code>ReviewCommentsSent</code></td><td>Review comments forwarded to agent</td></tr>
+</tbody></table>
+</div>
+<h3 id="merge-events"><a class="header" href="#merge-events">Merge Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>MergeReady</code></td><td>PR ready to merge (approved + CI green)</td></tr>
+<tr><td><code>MergeConflicts</code></td><td>Merge conflicts detected</td></tr>
+<tr><td><code>MergeCompleted</code></td><td>PR merged successfully</td></tr>
+</tbody></table>
+</div>
+<h3 id="reaction-events"><a class="header" href="#reaction-events">Reaction Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>ReactionTriggered</code></td><td>A reaction rule fired</td></tr>
+<tr><td><code>ReactionEscalated</code></td><td>Reaction escalated after timeout</td></tr>
+<tr><td><code>AllComplete</code></td><td>All project sessions completed</td></tr>
+</tbody></table>
+</div>
+<h3 id="node-events"><a class="header" href="#node-events">Node Events</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>NodeConnected</code></td><td>Connected to remote node</td></tr>
+<tr><td><code>NodeDisconnected</code></td><td>Disconnected from remote node</td></tr>
+<tr><td><code>NodeLaunched</code></td><td>Remote node daemon started</td></tr>
+<tr><td><code>NodeHealthCheck</code></td><td>Node health check performed</td></tr>
+</tbody></table>
+</div>
+<h2 id="event-priority-2"><a class="header" href="#event-priority-2">Event Priority</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Priority</th><th>Use Case</th></tr></thead><tbody>
+<tr><td><code>Info</code></td><td>Status updates, completions</td></tr>
+<tr><td><code>Action</code></td><td>Something needs attention</td></tr>
+<tr><td><code>Urgent</code></td><td>Immediate human attention needed</td></tr>
+<tr><td><code>Critical</code></td><td>System-level failures</td></tr>
+</tbody></table>
+</div>
+<p>Priorities are ordered: <code>Info &lt; Action &lt; Urgent &lt; Critical</code>.</p>
+<h2 id="event-channels"><a class="header" href="#event-channels">Event Channels</a></h2>
+<h3 id="eventbus-in-process"><a class="header" href="#eventbus-in-process">EventBus (In-Process)</a></h3>
+<p>Tokio broadcast channel with capacity 1024. Subscribers receive events in real-time. Used by the lifecycle manager, web API (SSE), and internal consumers.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let rx = event_bus.subscribe();
+while let Ok(event) = rx.recv().await {
+    // handle event
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="nats-distributed"><a class="header" href="#nats-distributed">NATS (Distributed)</a></h3>
+<p>Events are published to NATS topics following a hierarchy:</p>
+<pre><code>ennio.events.{project_id}.{session_id}.{event_type}
+</code></pre>
+<p>External systems can subscribe to patterns:</p>
+<ul>
+<li><code>ennio.events.&gt;</code> — all events</li>
+<li><code>ennio.events.my-project.&gt;</code> — all events for a project</li>
+<li><code>ennio.events.*.*.ci_failing</code> — all CI failure events</li>
+</ul>
+<h3 id="sqlite-persistent"><a class="header" href="#sqlite-persistent">SQLite (Persistent)</a></h3>
+<p>All events are persisted to the <code>events</code> table for history, debugging, and replay. Query via the REST API or directly from the database.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="database-schema"><a class="header" href="#database-schema">Database Schema</a></h1>
+<p>Ennio uses SQLite with WAL journal mode for persistence. The database is created automatically on startup and migrations run on every boot.</p>
+<h2 id="connection"><a class="header" href="#connection">Connection</a></h2>
+<pre><code class="language-yaml">database_url: sqlite:ennio.db      # file-based (recommended)
+database_url: sqlite::memory:       # in-memory (default, data lost on restart)
+</code></pre>
+<p>The connection pool is configured with:</p>
+<ul>
+<li>WAL journal mode (concurrent reads)</li>
+<li>Foreign keys enabled</li>
+<li><code>SqlitePool</code> from <code>sqlx</code></li>
+</ul>
+<h2 id="tables"><a class="header" href="#tables">Tables</a></h2>
+<h3 id="sessions"><a class="header" href="#sessions"><code>sessions</code></a></h3>
+<p>Stores session metadata.</p>
+<div class="table-wrapper"><table><thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>TEXT PRIMARY KEY</code></td><td>Session ID (e.g., <code>myapp-abc123</code>)</td></tr>
+<tr><td><code>project_id</code></td><td><code>TEXT NOT NULL</code></td><td>Owning project</td></tr>
+<tr><td><code>status</code></td><td><code>TEXT NOT NULL</code></td><td>Current <code>SessionStatus</code></td></tr>
+<tr><td><code>config_hash</code></td><td><code>TEXT</code></td><td>Hash of config at spawn time</td></tr>
+<tr><td><code>branch</code></td><td><code>TEXT</code></td><td>Git branch name</td></tr>
+<tr><td><code>pr_url</code></td><td><code>TEXT</code></td><td>Pull request URL</td></tr>
+<tr><td><code>agent_name</code></td><td><code>TEXT</code></td><td>Agent plugin name</td></tr>
+<tr><td><code>role</code></td><td><code>TEXT</code></td><td>Session role</td></tr>
+<tr><td><code>created_at</code></td><td><code>TEXT NOT NULL</code></td><td>ISO 8601 timestamp</td></tr>
+<tr><td><code>updated_at</code></td><td><code>TEXT NOT NULL</code></td><td>ISO 8601 timestamp</td></tr>
+</tbody></table>
+</div>
+<h3 id="events"><a class="header" href="#events"><code>events</code></a></h3>
+<p>Stores the event log.</p>
+<div class="table-wrapper"><table><thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>TEXT PRIMARY KEY</code></td><td>Event ID</td></tr>
+<tr><td><code>session_id</code></td><td><code>TEXT NOT NULL</code></td><td>Associated session</td></tr>
+<tr><td><code>event_type</code></td><td><code>TEXT NOT NULL</code></td><td><code>EventType</code> variant name</td></tr>
+<tr><td><code>priority</code></td><td><code>TEXT NOT NULL</code></td><td><code>EventPriority</code> variant name</td></tr>
+<tr><td><code>message</code></td><td><code>TEXT NOT NULL</code></td><td>Human-readable description</td></tr>
+<tr><td><code>data</code></td><td><code>TEXT</code></td><td>JSON payload</td></tr>
+<tr><td><code>created_at</code></td><td><code>TEXT NOT NULL</code></td><td>ISO 8601 timestamp</td></tr>
+</tbody></table>
+</div>
+<h3 id="projects"><a class="header" href="#projects"><code>projects</code></a></h3>
+<p>Stores project metadata.</p>
+<div class="table-wrapper"><table><thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>TEXT PRIMARY KEY</code></td><td>Project ID</td></tr>
+<tr><td><code>name</code></td><td><code>TEXT NOT NULL</code></td><td>Project name</td></tr>
+<tr><td><code>repo_url</code></td><td><code>TEXT NOT NULL</code></td><td>Git repository URL</td></tr>
+<tr><td><code>config</code></td><td><code>TEXT</code></td><td>JSON serialized config</td></tr>
+<tr><td><code>created_at</code></td><td><code>TEXT NOT NULL</code></td><td>ISO 8601 timestamp</td></tr>
+<tr><td><code>updated_at</code></td><td><code>TEXT NOT NULL</code></td><td>ISO 8601 timestamp</td></tr>
+</tbody></table>
+</div>
+<h3 id="metrics"><a class="header" href="#metrics"><code>metrics</code></a></h3>
+<p>Stores session metrics.</p>
+<div class="table-wrapper"><table><thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>INTEGER PRIMARY KEY</code></td><td>Auto-increment ID</td></tr>
+<tr><td><code>session_id</code></td><td><code>TEXT NOT NULL</code></td><td>Associated session</td></tr>
+<tr><td><code>metric_name</code></td><td><code>TEXT NOT NULL</code></td><td>Metric key</td></tr>
+<tr><td><code>metric_value</code></td><td><code>REAL NOT NULL</code></td><td>Numeric value</td></tr>
+<tr><td><code>created_at</code></td><td><code>TEXT NOT NULL</code></td><td>ISO 8601 timestamp</td></tr>
+</tbody></table>
+</div>
+<h2 id="migrations"><a class="header" href="#migrations">Migrations</a></h2>
+<p>Migrations are embedded in the binary and run automatically on startup. They are idempotent — running them multiple times is safe. The migration system uses <code>CREATE TABLE IF NOT EXISTS</code> patterns.</p>
+<h2 id="querying"><a class="header" href="#querying">Querying</a></h2>
+<p>All database access goes through repository functions in <code>ennio-db</code>:</p>
+<pre><code>sessions::insert(pool, session)
+sessions::get(pool, session_id) → Option&lt;Session&gt;
+sessions::list(pool, project_filter) → Vec&lt;Session&gt;
+sessions::update_status(pool, session_id, status)
+
+events::insert(pool, event)
+events::get(pool, event_id) → Option&lt;OrchestratorEvent&gt;
+events::list_by_session(pool, session_id) → Vec&lt;OrchestratorEvent&gt;
+</code></pre>
+<p>All queries use parameterized bindings via <code>sqlx::query().bind()</code> — no SQL injection risk.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

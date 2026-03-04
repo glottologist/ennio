@@ -6,7 +6,6 @@ use crate::error::MlError;
 /// Detects anomalous metric values for a session.
 #[async_trait]
 pub trait AnomalyDetector: Send + Sync {
-    /// Returns `true` if the given metric value is anomalous for the session.
     async fn is_anomalous(
         &self,
         session_id: &SessionId,

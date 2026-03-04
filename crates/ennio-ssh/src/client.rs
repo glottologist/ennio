@@ -1,9 +1,11 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use ennio_core::config::{HostKeyPolicyConfig, SshAuthConfig, SshConnectionConfig};
 use russh::keys::ssh_key;
+use secrecy::ExposeSecret;
 use tokio::sync::Mutex;
 
-use crate::config::{HostKeyPolicy, SshAuth, SshConfig};
 use crate::error::SshError;
 
 #[derive(Debug, Clone)]
@@ -14,7 +16,72 @@ pub struct ExecOutput {
 }
 
 struct ClientHandler {
-    host_key_policy: HostKeyPolicy,
+    host_key_policy: HostKeyPolicyConfig,
+    host: String,
+    port: u16,
+    known_hosts_path: Option<PathBuf>,
+}
+
+impl ClientHandler {
+    fn check_known_hosts(&self, server_public_key: &ssh_key::PublicKey) -> Result<bool, SshError> {
+        let result = match &self.known_hosts_path {
+            Some(path) => russh_keys::known_hosts::check_known_hosts_path(
+                &self.host,
+                self.port,
+                server_public_key,
+                path,
+            ),
+            None => russh_keys::check_known_hosts(&self.host, self.port, server_public_key),
+        };
+        match result {
+            Ok(matched) => Ok(matched),
+            Err(russh_keys::Error::KeyChanged { line }) => Err(SshError::HostKeyChanged {
+                host: self.host.clone(), // clone: host needed for error context
+                line,
+            }),
+            Err(e) => Err(SshError::KnownHostsRead {
+                message: e.to_string(),
+            }),
+        }
+    }
+
+    fn persist_host_key(&self, server_public_key: &ssh_key::PublicKey) -> Result<(), SshError> {
+        let result = match &self.known_hosts_path {
+            Some(path) => russh_keys::known_hosts::learn_known_hosts_path(
+                &self.host,
+                self.port,
+                server_public_key,
+                path,
+            ),
+            None => {
+                russh_keys::known_hosts::learn_known_hosts(&self.host, self.port, server_public_key)
+            }
+        };
+        result.map_err(|e| SshError::KnownHostsWrite {
+            message: e.to_string(),
+        })
+    }
+
+    fn accept_new_key(&self, server_public_key: &ssh_key::PublicKey) -> Result<bool, SshError> {
+        match self.check_known_hosts(server_public_key)? {
+            true => Ok(true),
+            false => {
+                tracing::info!(host = %self.host, "persisting new host key");
+                self.persist_host_key(server_public_key)?;
+                Ok(true)
+            }
+        }
+    }
+
+    fn verify_known_key(&self, server_public_key: &ssh_key::PublicKey) -> Result<bool, SshError> {
+        match self.check_known_hosts(server_public_key)? {
+            true => Ok(true),
+            false => Err(SshError::HostKeyRejected {
+                host: self.host.clone(), // clone: host needed for error context
+                message: "host key not found in known_hosts".into(),
+            }),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -23,32 +90,32 @@ impl russh::client::Handler for ClientHandler {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &ssh_key::PublicKey,
+        server_public_key: &ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
         match self.host_key_policy {
-            HostKeyPolicy::AcceptAll => Ok(true),
-            // TODO: implement known_hosts checking via russh_keys::known_hosts
-            HostKeyPolicy::Strict | HostKeyPolicy::AcceptNew => Ok(true),
+            HostKeyPolicyConfig::AcceptAll => Ok(true),
+            HostKeyPolicyConfig::AcceptNew => self.accept_new_key(server_public_key),
+            HostKeyPolicyConfig::Strict => self.verify_known_key(server_public_key),
         }
     }
 }
 
 pub struct SshClient {
     handle: Arc<Mutex<russh::client::Handle<ClientHandler>>>,
-    config: SshConfig,
+    config: SshConnectionConfig,
 }
 
 impl Clone for SshClient {
     fn clone(&self) -> Self {
         Self {
             handle: Arc::clone(&self.handle),
-            config: self.config.clone(), // clone: SshConfig is pure data needed for reconnect
+            config: self.config.clone(), // clone: SshConnectionConfig is pure data needed for reconnect
         }
     }
 }
 
 impl SshClient {
-    pub async fn connect(config: &SshConfig) -> Result<Self, SshError> {
+    pub async fn connect(config: &SshConnectionConfig) -> Result<Self, SshError> {
         let handle = establish_connection(config).await?;
         Ok(Self {
             handle: Arc::new(Mutex::new(handle)),
@@ -173,7 +240,7 @@ impl SshClient {
 }
 
 async fn establish_connection(
-    config: &SshConfig,
+    config: &SshConnectionConfig,
 ) -> Result<russh::client::Handle<ClientHandler>, SshError> {
     let ssh_config = russh::client::Config {
         inactivity_timeout: Some(config.connection_timeout),
@@ -183,6 +250,9 @@ async fn establish_connection(
 
     let handler = ClientHandler {
         host_key_policy: config.host_key_policy,
+        host: config.host.clone(), // clone: host needed for error reporting in handler
+        port: config.port,
+        known_hosts_path: config.known_hosts_path.clone(), // clone: path needed in handler for known_hosts lookup
     };
     let mut handle = tokio::time::timeout(
         config.connection_timeout,
@@ -204,11 +274,11 @@ async fn establish_connection(
 
 async fn authenticate(
     handle: &mut russh::client::Handle<ClientHandler>,
-    config: &SshConfig,
+    config: &SshConnectionConfig,
 ) -> Result<(), SshError> {
     let authenticated = match &config.auth {
-        SshAuth::Key { path, passphrase } => {
-            let key_pair = load_key(path, passphrase.as_deref()).await?;
+        SshAuthConfig::Key { path, passphrase } => {
+            let key_pair = load_key(path, passphrase.as_ref().map(|s| s.expose_secret())).await?;
             handle
                 .authenticate_publickey(&config.username, Arc::new(key_pair))
                 .await
@@ -216,13 +286,13 @@ async fn authenticate(
                     message: format!("public key auth failed: {e}"),
                 })?
         }
-        SshAuth::Password { password } => handle
-            .authenticate_password(&config.username, password)
+        SshAuthConfig::Password { password } => handle
+            .authenticate_password(&config.username, password.expose_secret())
             .await
             .map_err(|e| SshError::Authentication {
                 message: format!("password auth failed: {e}"),
             })?,
-        SshAuth::Agent => {
+        SshAuthConfig::Agent => {
             return Err(SshError::Authentication {
                 message: "SSH agent authentication not yet implemented".to_string(),
             });
@@ -272,5 +342,161 @@ impl std::fmt::Debug for SshClient {
             .field("port", &self.config.port)
             .field("username", &self.config.username)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::NamedTempFile;
+
+    use super::*;
+
+    const TEST_KEY_A: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN796jTiQfZfG1KaT0PtFDJ/XFSqti";
+    const TEST_KEY_B: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGkRGFKhIT0dEsn5wPnKw+JaoJBZ5cFAMOtnPKMi0Vzt";
+
+    fn parse_pubkey(openssh: &str) -> ssh_key::PublicKey {
+        ssh_key::PublicKey::from_openssh(openssh).expect("valid test key")
+    }
+
+    fn handler_with_path(policy: HostKeyPolicyConfig, path: &std::path::Path) -> ClientHandler {
+        ClientHandler {
+            host_key_policy: policy,
+            host: "test.example.com".to_string(),
+            port: 22,
+            known_hosts_path: Some(path.to_path_buf()),
+        }
+    }
+
+    #[test]
+    fn host_key_rejected_error_contains_host() {
+        let err = SshError::HostKeyRejected {
+            host: "test.example.com".to_string(),
+            message: "strict policy rejects all unverified keys".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("test.example.com"));
+        assert!(msg.contains("strict policy"));
+    }
+
+    #[test]
+    fn host_key_changed_error_contains_line() {
+        let err = SshError::HostKeyChanged {
+            host: "evil.example.com".to_string(),
+            line: 42,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("evil.example.com"));
+        assert!(msg.contains("42"));
+        assert!(msg.contains("MITM"));
+    }
+
+    #[test]
+    fn accept_new_persists_key_to_known_hosts() {
+        let file = NamedTempFile::new().unwrap();
+        let handler = handler_with_path(HostKeyPolicyConfig::AcceptNew, file.path());
+        let key = parse_pubkey(TEST_KEY_A);
+
+        let result = handler.accept_new_key(&key);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        let contents = std::fs::read_to_string(file.path()).unwrap();
+        assert!(contents.contains("test.example.com"));
+    }
+
+    #[test]
+    fn accept_new_accepts_already_known_key() {
+        let file = NamedTempFile::new().unwrap();
+        let handler = handler_with_path(HostKeyPolicyConfig::AcceptNew, file.path());
+        let key = parse_pubkey(TEST_KEY_A);
+
+        handler.persist_host_key(&key).unwrap();
+
+        let result = handler.accept_new_key(&key);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn accept_new_rejects_changed_key() {
+        let file = NamedTempFile::new().unwrap();
+        let handler = handler_with_path(HostKeyPolicyConfig::AcceptNew, file.path());
+        let key_a = parse_pubkey(TEST_KEY_A);
+        let key_b = parse_pubkey(TEST_KEY_B);
+
+        handler.persist_host_key(&key_a).unwrap();
+
+        let result = handler.accept_new_key(&key_b);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SshError::HostKeyChanged { .. }),
+            "expected HostKeyChanged, got: {err}"
+        );
+    }
+
+    #[test]
+    fn strict_accepts_known_key() {
+        let file = NamedTempFile::new().unwrap();
+        let handler = handler_with_path(HostKeyPolicyConfig::Strict, file.path());
+        let key = parse_pubkey(TEST_KEY_A);
+
+        handler.persist_host_key(&key).unwrap();
+
+        let result = handler.verify_known_key(&key);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn strict_rejects_unknown_key() {
+        let file = NamedTempFile::new().unwrap();
+        let handler = handler_with_path(HostKeyPolicyConfig::Strict, file.path());
+        let key = parse_pubkey(TEST_KEY_A);
+
+        let result = handler.verify_known_key(&key);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SshError::HostKeyRejected { .. }),
+            "expected HostKeyRejected, got: {err}"
+        );
+    }
+
+    #[test]
+    fn strict_rejects_changed_key() {
+        let file = NamedTempFile::new().unwrap();
+        let handler = handler_with_path(HostKeyPolicyConfig::Strict, file.path());
+        let key_a = parse_pubkey(TEST_KEY_A);
+        let key_b = parse_pubkey(TEST_KEY_B);
+
+        handler.persist_host_key(&key_a).unwrap();
+
+        let result = handler.verify_known_key(&key_b);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SshError::HostKeyChanged { .. }),
+            "expected HostKeyChanged, got: {err}"
+        );
+    }
+
+    #[test]
+    fn accept_all_ignores_known_hosts() {
+        let file = NamedTempFile::new().unwrap();
+        let handler = handler_with_path(HostKeyPolicyConfig::AcceptAll, file.path());
+        let key_a = parse_pubkey(TEST_KEY_A);
+        let key_b = parse_pubkey(TEST_KEY_B);
+
+        handler.persist_host_key(&key_a).unwrap();
+
+        // check_known_hosts still detects key mismatch (policy-agnostic)
+        let result = handler.check_known_hosts(&key_b);
+        assert!(matches!(result, Err(SshError::HostKeyChanged { .. })));
+
+        let contents = std::fs::read_to_string(file.path()).unwrap();
+        assert!(!contents.is_empty());
     }
 }

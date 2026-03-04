@@ -43,29 +43,22 @@ impl Tracker for LinearTracker {
         ))
     }
 
-    fn issue_url(&self, _project_id: &ProjectId, issue_id: &str) -> String {
-        format!("https://linear.app/issue/{issue_id}")
+    fn issue_url(&self, _project_id: &ProjectId, issue_id: &str) -> Result<String, EnnioError> {
+        let mut url = url::Url::parse("https://linear.app").map_err(|e| EnnioError::Tracker {
+            message: format!("invalid base URL: {e}"),
+        })?;
+        url.path_segments_mut()
+            .map_err(|()| EnnioError::Tracker {
+                message: "cannot-be-a-base URL".to_string(),
+            })?
+            .push("issue")
+            .push(issue_id);
+        Ok(url.to_string())
     }
 
     fn branch_name(&self, issue: &Issue) -> String {
-        let sanitized: String = issue
-            .title
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' {
-                    c.to_ascii_lowercase()
-                } else {
-                    '-'
-                }
-            })
-            .collect();
-
-        let trimmed = sanitized.trim_matches('-');
-        let end = truncate_to_char_boundary(trimmed, 50);
-        let truncated = &trimmed[..end];
-        let truncated = truncated.trim_end_matches('-');
-
-        format!("{}-{truncated}", issue.id.to_lowercase())
+        let sanitized = sanitize_title_for_branch(&issue.title, 50);
+        format!("{}-{sanitized}", issue.id.to_lowercase())
     }
 
     fn generate_prompt(&self, issue: &Issue) -> String {
@@ -116,13 +109,4 @@ impl Tracker for LinearTracker {
     }
 }
 
-fn truncate_to_char_boundary(s: &str, max_bytes: usize) -> usize {
-    if max_bytes >= s.len() {
-        return s.len();
-    }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    end
-}
+use super::sanitize_title_for_branch;

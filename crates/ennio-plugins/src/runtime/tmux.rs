@@ -145,18 +145,22 @@ async fn send_via_keys(name: &str, message: &str) -> Result<(), EnnioError> {
 }
 
 async fn send_via_buffer(name: &str, message: &str) -> Result<(), EnnioError> {
-    let tmp_file = format!("/tmp/ennio-tmux-buf-{name}");
+    let tmp = tempfile::NamedTempFile::new().map_err(|e| EnnioError::Io {
+        path: None,
+        source: e,
+    })?;
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
 
     debug!(session_name = %name, len = message.len(), "sending via load-buffer");
 
-    tokio::fs::write(&tmp_file, message.as_bytes())
+    tokio::fs::write(&tmp_path, message.as_bytes())
         .await
         .map_err(|e| EnnioError::Io {
-            path: Some(tmp_file.clone().into()),
+            path: Some(tmp_path.clone().into()), // clone: tmp_path used after this for tmux commands
             source: e,
         })?;
 
-    let output = run_tmux(&["load-buffer", &tmp_file]).await?;
+    let output = run_tmux(&["load-buffer", &tmp_path]).await?;
     check_exit(&output, "tmux load-buffer failed")?;
 
     let output = run_tmux(&["paste-buffer", "-t", name]).await?;
@@ -164,8 +168,6 @@ async fn send_via_buffer(name: &str, message: &str) -> Result<(), EnnioError> {
 
     let output = run_tmux(&["send-keys", "-t", name, "Enter"]).await?;
     check_exit(&output, "tmux send-keys failed")?;
-
-    let _ = tokio::fs::remove_file(&tmp_file).await;
 
     Ok(())
 }

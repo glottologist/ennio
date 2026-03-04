@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use ennio_core::runtime::{RuntimeCreateConfig, RuntimeHandle};
 use tracing::{debug, warn};
 
-use super::SshSessionStrategy;
+use super::{SshSessionStrategy, build_env_exports, extract_data_str};
 use crate::client::SshClient;
 use crate::error::SshError;
 use crate::shell;
@@ -36,14 +36,7 @@ impl SshSessionStrategy for RemoteControlStrategy {
         let name = &config.session_name;
         let cwd = shell::escape(&config.cwd);
 
-        let mut env_exports = String::new();
-        for (key, value) in &config.env {
-            env_exports.push_str(&format!(
-                "export {}={}; ",
-                shell::escape(key),
-                shell::escape(value)
-            ));
-        }
+        let env_exports = build_env_exports(&config.env);
 
         let log_file = format!("/tmp/ennio-rc-{name}.log");
         let pid_file = format!("/tmp/ennio-rc-{name}.pid");
@@ -126,9 +119,12 @@ impl SshSessionStrategy for RemoteControlStrategy {
     ) -> Result<(), SshError> {
         let name = &handle.runtime_name;
         let session_url = extract_data_str(&handle.data, "session_url")?;
-        let escaped_message = message.replace('\\', "\\\\").replace('"', "\\\"");
 
-        let payload = format!(r#"{{"type":"message","content":"{escaped_message}"}}"#);
+        let payload = serde_json::json!({
+            "type": "message",
+            "content": message
+        })
+        .to_string();
         let escaped_payload = shell::escape(&payload);
         let escaped_url = shell::escape(session_url);
 
@@ -226,16 +222,4 @@ async fn poll_session_url(
             u64::from(SESSION_URL_MAX_ATTEMPTS) * SESSION_URL_POLL_INTERVAL_MS,
         ),
     })
-}
-
-fn extract_data_str<'a>(
-    data: &'a HashMap<String, serde_json::Value>,
-    key: &str,
-) -> Result<&'a str, SshError> {
-    data.get(key)
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| SshError::Execution {
-            command: String::new(),
-            message: format!("missing '{key}' in runtime handle data"),
-        })
 }

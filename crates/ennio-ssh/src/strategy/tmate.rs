@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use ennio_core::runtime::{RuntimeCreateConfig, RuntimeHandle};
 use tracing::{debug, warn};
 
-use super::SshSessionStrategy;
+use super::{SshSessionStrategy, build_env_exports, extract_data_str};
 use crate::client::SshClient;
 use crate::error::SshError;
 use crate::shell;
@@ -39,14 +39,7 @@ impl SshSessionStrategy for TmateStrategy {
         let socket = format!("/tmp/tmate-{}.sock", &config.session_name);
         let escaped_socket = shell::escape(&socket);
 
-        let mut env_exports = String::new();
-        for (key, value) in &config.env {
-            env_exports.push_str(&format!(
-                "export {}={}; ",
-                shell::escape(key),
-                shell::escape(value)
-            ));
-        }
+        let env_exports = build_env_exports(&config.env);
 
         let launch_cmd = format!(
             "cd {cwd} && {env_exports}tmate -S {escaped_socket} new-session -d -s {name} {command}"
@@ -220,16 +213,4 @@ async fn poll_tmate_urls(
             u64::from(TMATE_READY_MAX_ATTEMPTS) * TMATE_READY_POLL_INTERVAL_MS,
         ),
     })
-}
-
-fn extract_data_str<'a>(
-    data: &'a HashMap<String, serde_json::Value>,
-    key: &str,
-) -> Result<&'a str, SshError> {
-    data.get(key)
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| SshError::Execution {
-            command: String::new(),
-            message: format!("missing '{key}' in runtime handle data"),
-        })
 }

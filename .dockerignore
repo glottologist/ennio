@@ -1,0 +1,10 @@
+target/
+.git/
+.claude/
+claude/
+.github/
+*.md
+flake.*
+.direnv/
+.devbox/
+.envrc

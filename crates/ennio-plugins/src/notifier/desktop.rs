@@ -64,7 +64,8 @@ async fn send_desktop_notification(title: &str, body: &str) -> Result<(), EnnioE
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
-        let _ = (title, body);
+        let _title = title;
+        let _body = body;
         return Err(EnnioError::Notifier {
             message: "desktop notifications not supported on this platform".to_owned(),
         });

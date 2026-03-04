@@ -1,3 +1,4 @@
+mod auth;
 mod server;
 mod service;
 
@@ -21,6 +22,10 @@ struct Args {
     /// Root directory for workspaces
     #[arg(long)]
     workspace_root: Option<String>,
+
+    /// Bearer token for gRPC authentication
+    #[arg(long, env = "ENNIO_NODE_AUTH_TOKEN")]
+    auth_token: Option<String>,
 }
 
 #[tokio::main]
@@ -39,10 +44,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(
         addr = %addr,
         idle_timeout_secs = args.idle_timeout,
+        auth = args.auth_token.is_some(),
         "starting ennio-node daemon"
     );
 
-    server::run(&addr, args.idle_timeout, args.workspace_root.as_deref()).await?;
+    server::run(
+        &addr,
+        args.idle_timeout,
+        args.workspace_root.as_deref(),
+        args.auth_token.as_deref(),
+    )
+    .await?;
 
     Ok(())
 }

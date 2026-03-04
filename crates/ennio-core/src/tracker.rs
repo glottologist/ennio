@@ -59,7 +59,7 @@ pub trait Tracker: Send + Sync {
 
     async fn is_completed(&self, issue: &Issue) -> Result<bool, EnnioError>;
 
-    fn issue_url(&self, project_id: &ProjectId, issue_id: &str) -> String;
+    fn issue_url(&self, project_id: &ProjectId, issue_id: &str) -> Result<String, EnnioError>;
 
     fn branch_name(&self, issue: &Issue) -> String;
 

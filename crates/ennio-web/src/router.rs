@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum::Router;
+use axum::http::{HeaderValue, Method, header};
 use axum::middleware;
 use axum::routing::{delete, get, post};
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -9,6 +10,13 @@ use tower_http::trace::TraceLayer;
 use crate::auth;
 use crate::handlers;
 use crate::state::AppState;
+
+static DEFAULT_ORIGINS: LazyLock<[HeaderValue; 2]> = LazyLock::new(|| {
+    [
+        "http://localhost:3000".parse().unwrap(),
+        "http://localhost:3001".parse().unwrap(),
+    ]
+});
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     let cors = build_cors(&state.cors_origins);
@@ -36,20 +44,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 }
 
 fn build_cors(origins: &[String]) -> CorsLayer {
+    let allowed_methods = [Method::GET, Method::POST, Method::DELETE];
+    let allowed_headers = [header::CONTENT_TYPE, header::AUTHORIZATION];
+
     if origins.is_empty() {
         return CorsLayer::new()
-            .allow_origin(AllowOrigin::list([
-                "http://localhost:3000".parse().expect("valid header value"),
-                "http://localhost:3001".parse().expect("valid header value"),
-            ]))
-            .allow_methods(tower_http::cors::Any)
-            .allow_headers(tower_http::cors::Any);
+            .allow_origin(AllowOrigin::list(DEFAULT_ORIGINS.clone()))
+            .allow_methods(allowed_methods)
+            .allow_headers(allowed_headers);
     }
 
     let parsed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
 
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(parsed))
-        .allow_methods(tower_http::cors::Any)
-        .allow_headers(tower_http::cors::Any)
+        .allow_methods(allowed_methods)
+        .allow_headers(allowed_headers)
 }

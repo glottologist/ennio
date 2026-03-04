@@ -1708,11 +1708,13 @@ dependencies = [
  "pretty_assertions",
  "proptest",
  "rstest",
+ "secrecy",
  "serde",
  "serde_json",
  "serde_yaml",
  "sha2",
  "strum 0.27.2",
+ "temp-env",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -1812,8 +1814,11 @@ dependencies = [
  "proptest",
  "prost",
  "rstest",
+ "sha2",
+ "subtle",
  "tokio",
  "tokio-test",
+ "tokio-util",
  "tonic 0.13.1",
  "tracing",
  "tracing-subscriber",
@@ -1846,6 +1851,7 @@ dependencies = [
  "proptest",
  "reqwest",
  "rstest",
+ "secrecy",
  "serde",
  "serde_json",
  "tempfile",
@@ -1889,6 +1895,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sqlx",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
@@ -1905,10 +1912,13 @@ dependencies = [
  "chrono",
  "ennio-core",
  "ennio-proto",
+ "getrandom 0.3.4",
+ "hex",
  "proptest",
  "rstest",
  "russh",
  "russh-keys",
+ "secrecy",
  "serde",
  "serde_json",
  "shell-escape",
@@ -1949,6 +1959,8 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "sha2",
+ "subtle",
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
@@ -2942,6 +2954,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -4615,6 +4628,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrecy"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
+dependencies = [
+ "serde",
+ "zeroize",
+]
+
+[[package]]
 name = "security-framework"
 version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5104,7 +5127,6 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
- "uuid",
  "webpki-roots 0.26.11",
 ]
 
@@ -5186,7 +5208,6 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.18",
  "tracing",
- "uuid",
  "whoami",
 ]
 
@@ -5225,7 +5246,6 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.18",
  "tracing",
- "uuid",
  "whoami",
 ]
 
@@ -5252,7 +5272,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "url",
- "uuid",
 ]
 
 [[package]]
@@ -5432,6 +5451,15 @@ name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
+
+[[package]]
+name = "temp-env"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96374855068f47402c3121c6eed88d29cb1de8f3ab27090e273e420bdabcf050"
+dependencies = [
+ "parking_lot",
+]
 
 [[package]]
 name = "tempfile"
@@ -5648,6 +5676,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

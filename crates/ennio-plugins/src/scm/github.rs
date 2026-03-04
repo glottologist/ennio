@@ -6,24 +6,25 @@ use ennio_core::scm::{
 };
 use reqwest::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::debug;
 use url::Url;
 
 pub struct GitHubScm {
     client: Client,
-    token: String,
+    token: SecretString,
 }
 
 impl GitHubScm {
     pub fn new(token: impl Into<String>) -> Self {
         Self {
             client: Client::new(),
-            token: token.into(),
+            token: SecretString::from(token.into()),
         }
     }
 
     fn auth_header(&self) -> String {
-        format!("Bearer {}", self.token)
+        format!("Bearer {}", self.token.expose_secret())
     }
 
     fn repo_from_project<'a>(&self, project_id: &'a ProjectId) -> &'a str {
@@ -45,7 +46,7 @@ impl GitHubScm {
     ) -> Result<Option<serde_json::Value>, EnnioError> {
         let mut req = self
             .client
-            .request(method.clone(), url)
+            .request(method.clone(), url) // clone: reqwest::Method is cheap Copy-like type
             .header(AUTHORIZATION, self.auth_header())
             .header(USER_AGENT, "ennio")
             .header(ACCEPT, "application/vnd.github+json");
@@ -78,8 +79,10 @@ impl GitHubScm {
 
     async fn github_get(&self, url: Url) -> Result<serde_json::Value, EnnioError> {
         self.github_request(reqwest::Method::GET, url, None)
-            .await
-            .map(|v| v.expect("GET always returns body"))
+            .await?
+            .ok_or_else(|| EnnioError::Scm {
+                message: "GET request returned no body".into(),
+            })
     }
 
     async fn github_put(&self, url: Url, body: &serde_json::Value) -> Result<(), EnnioError> {

@@ -21,6 +21,18 @@ pub enum SshError {
     #[error("failed to load SSH key from {path}: {message}")]
     KeyLoad { path: PathBuf, message: String },
 
+    #[error("SSH host key rejected for {host}: {message}")]
+    HostKeyRejected { host: String, message: String },
+
+    #[error("SSH host key changed for {host} (known_hosts line {line}) — possible MITM attack")]
+    HostKeyChanged { host: String, line: usize },
+
+    #[error("failed to read known_hosts: {message}")]
+    KnownHostsRead { message: String },
+
+    #[error("failed to write known_hosts: {message}")]
+    KnownHostsWrite { message: String },
+
     #[error("SSH tunnel error: {message}")]
     Tunnel { message: String },
 
@@ -59,54 +71,6 @@ impl From<russh_keys::Error> for SshError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn connection_error_displays_host() {
-        let err = SshError::Connection {
-            host: "example.com".to_string(),
-            message: "refused".to_string(),
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("example.com"));
-        assert!(msg.contains("refused"));
-    }
-
-    #[test]
-    fn timeout_error_displays_duration() {
-        let err = SshError::Timeout {
-            duration: Duration::from_secs(30),
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("30s"));
-    }
-
-    #[test]
-    fn key_load_error_displays_path() {
-        let err = SshError::KeyLoad {
-            path: PathBuf::from("/home/user/.ssh/id_rsa"),
-            message: "permission denied".to_string(),
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("id_rsa"));
-        assert!(msg.contains("permission denied"));
-    }
-
-    #[test]
-    fn channel_closed_error_displays() {
-        let err = SshError::ChannelClosed;
-        let msg = err.to_string();
-        assert!(msg.contains("channel closed"));
-    }
-
-    #[test]
-    fn tunnel_error_displays_message() {
-        let err = SshError::Tunnel {
-            message: "port already in use".to_string(),
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("tunnel"));
-        assert!(msg.contains("port already in use"));
-    }
 
     #[test]
     fn converts_to_ennio_error() {

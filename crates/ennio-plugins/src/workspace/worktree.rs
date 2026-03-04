@@ -8,6 +8,8 @@ use ennio_core::workspace::{Workspace, WorkspaceCreateConfig, WorkspaceInfo};
 use tokio::process::Command;
 use tracing::debug;
 
+use super::run_post_create_hooks;
+
 static FALLBACK_SESSION_ID: LazyLock<SessionId> = LazyLock::new(|| {
     SessionId::new("unknown").expect("hardcoded 'unknown' is valid per SessionId rules")
 });
@@ -137,54 +139,7 @@ impl Workspace for WorktreeWorkspace {
         path: &Path,
         config: &WorkspaceCreateConfig<'_>,
     ) -> Result<(), EnnioError> {
-        for symlink in &config.project.symlinks {
-            let source = &symlink.source;
-            let target = path.join(&symlink.target);
-
-            if let Some(parent) = target.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| EnnioError::Io {
-                        path: Some(parent.to_path_buf()),
-                        source: e,
-                    })?;
-            }
-
-            debug!(
-                source = %source.display(),
-                target = %target.display(),
-                "creating symlink"
-            );
-
-            tokio::fs::symlink(source, &target)
-                .await
-                .map_err(|e| EnnioError::Io {
-                    path: Some(target),
-                    source: e,
-                })?;
-        }
-
-        for cmd_str in &config.project.post_create {
-            debug!(command = %cmd_str, "running post-create command");
-
-            let output = Command::new("sh")
-                .args(["-c", cmd_str])
-                .current_dir(path)
-                .output()
-                .await
-                .map_err(|e| EnnioError::Workspace {
-                    message: format!("post-create command failed: {e}"),
-                })?;
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(EnnioError::Workspace {
-                    message: format!("post-create command '{cmd_str}' failed: {stderr}"),
-                });
-            }
-        }
-
-        Ok(())
+        run_post_create_hooks(path, config).await
     }
 
     async fn exists(&self, path: &Path) -> Result<bool, EnnioError> {
@@ -253,8 +208,7 @@ fn parse_porcelain_output(output: &str, _project_id: &ProjectId) -> Vec<Workspac
         worktrees.push(WorkspaceInfo {
             path,
             branch: current_branch,
-            session_id: ennio_core::id::SessionId::new("unknown")
-                .unwrap_or_else(|_| unreachable!()),
+            session_id: FALLBACK_SESSION_ID.clone(), // clone: SessionId must be owned per WorkspaceInfo
         });
     }
 

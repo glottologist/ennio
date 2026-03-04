@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::PgPool;
-use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use sqlx::SqlitePool;
+use tokio::sync::{Mutex, RwLock};
+use tracing::{debug, info, warn};
 
 use ennio_core::agent::{AgentLaunchConfig, PromptDelivery, WorkspaceHooksConfig};
 use ennio_core::config::{
@@ -21,9 +21,8 @@ use ennio_core::runtime::{Runtime, RuntimeCreateConfig, RuntimeHandle};
 use ennio_core::session::{Session, SessionStatus};
 use ennio_core::tracker::Issue;
 use ennio_core::workspace::{Workspace, WorkspaceCreateConfig};
-use ennio_db::repo::{events, sessions};
+use ennio_db::repo::sessions;
 use ennio_nats::EventPublisher;
-use ennio_ssh::config::SshConfig;
 use ennio_ssh::strategy::SshSessionStrategy;
 use ennio_ssh::{RemoteNode, SshClient, SshRuntime, create_strategy};
 
@@ -34,9 +33,9 @@ pub struct DefaultSessionManager {
     registry: Arc<PluginRegistry>,
     event_bus: Arc<EventBus>,
     config: Arc<OrchestratorConfig>,
-    pool: PgPool,
+    pool: SqlitePool,
     publisher: Arc<EventPublisher>,
-    node_connections: RwLock<HashMap<String, RemoteNode>>,
+    node_connections: RwLock<HashMap<String, Arc<Mutex<RemoteNode>>>>,
 }
 
 impl DefaultSessionManager {
@@ -44,7 +43,7 @@ impl DefaultSessionManager {
         registry: Arc<PluginRegistry>,
         event_bus: Arc<EventBus>,
         config: Arc<OrchestratorConfig>,
-        pool: PgPool,
+        pool: SqlitePool,
         publisher: Arc<EventPublisher>,
     ) -> Self {
         Self {
@@ -130,17 +129,10 @@ impl DefaultSessionManager {
 
         // clone: Arc reference count increment for async task ownership
         let publisher = Arc::clone(&self.publisher);
-        // clone: event must be owned by the spawned task
-        let event_for_nats = event.clone();
-        // clone: PgPool uses Arc internally, this is a cheap reference count increment
+        // clone: SqlitePool uses Arc internally, this is a cheap reference count increment
         let pool = self.pool.clone();
         tokio::spawn(async move {
-            if let Err(e) = publisher.publish_event(&event_for_nats).await {
-                warn!("failed to publish event to NATS: {e}");
-            }
-            if let Err(e) = events::insert(&pool, &event_for_nats).await {
-                error!("failed to persist event: {e}");
-            }
+            crate::events::emit_event(&pool, &publisher, event).await;
         });
     }
 
@@ -166,8 +158,7 @@ impl DefaultSessionManager {
             .cloned() // clone: NodeConnectionConfig is small pure data
             .unwrap_or_default();
 
-        let ssh_conf: SshConfig = ssh_config.clone().into(); // clone: SshConnectionConfig is pure data needed for conversion
-        let client = SshClient::connect(&ssh_conf).await?;
+        let client = SshClient::connect(ssh_config).await?;
 
         let node = RemoteNode::connect(&client, &node_config, host)
             .await
@@ -177,7 +168,7 @@ impl DefaultSessionManager {
             })?;
 
         let mut connections = self.node_connections.write().await;
-        connections.insert(host.to_owned(), node);
+        connections.insert(host.to_owned(), Arc::new(Mutex::new(node)));
 
         Ok(())
     }
@@ -185,9 +176,8 @@ impl DefaultSessionManager {
     async fn build_ssh_client(
         ssh_config: &SshConnectionConfig,
     ) -> Result<(SshClient, Box<dyn SshSessionStrategy>), EnnioError> {
-        let ssh_conf: SshConfig = ssh_config.clone().into(); // clone: SshConnectionConfig is pure data needed for conversion
-        let strategy = create_strategy(ssh_config.strategy.into());
-        let client = SshClient::connect(&ssh_conf).await?;
+        let strategy = create_strategy(ssh_config.strategy);
+        let client = SshClient::connect(ssh_config).await?;
         Ok((client, strategy))
     }
 
@@ -229,13 +219,16 @@ impl DefaultSessionManager {
             if Self::is_node_strategy(ssh_config) {
                 self.get_or_connect_node(ssh_config).await?;
                 let workspace_name = self.resolve_workspace_name(project);
-                let mut connections = self.node_connections.write().await;
-                let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
-                    EnnioError::Node {
-                        host: ssh_config.host.clone(), // clone: building error with host context
-                        message: "node connection lost".to_owned(),
-                    }
-                })?;
+                let node_arc = {
+                    let connections = self.node_connections.read().await;
+                    Arc::clone(connections.get(&ssh_config.host).ok_or_else(|| {
+                        EnnioError::Node {
+                            host: ssh_config.host.clone(), // clone: building error with host context
+                            message: "node connection lost".to_owned(),
+                        }
+                    })?)
+                };
+                let mut node = node_arc.lock().await;
                 let workspace_path = node
                     .create_workspace(&ws_config, workspace_name)
                     .await
@@ -310,13 +303,16 @@ impl DefaultSessionManager {
         if let Some(ssh_config) = &project.ssh_config {
             if Self::is_node_strategy(ssh_config) {
                 self.get_or_connect_node(ssh_config).await?;
-                let mut connections = self.node_connections.write().await;
-                let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
-                    EnnioError::Node {
-                        host: ssh_config.host.clone(), // clone: building error with host context
-                        message: "node connection lost".to_owned(),
-                    }
-                })?;
+                let node_arc = {
+                    let connections = self.node_connections.read().await;
+                    Arc::clone(connections.get(&ssh_config.host).ok_or_else(|| {
+                        EnnioError::Node {
+                            host: ssh_config.host.clone(), // clone: building error with host context
+                            message: "node connection lost".to_owned(),
+                        }
+                    })?)
+                };
+                let mut node = node_arc.lock().await;
                 let runtime_handle =
                     node.create_runtime(&runtime_config)
                         .await
@@ -429,13 +425,16 @@ impl DefaultSessionManager {
         ssh_config: &SshConnectionConfig,
     ) -> Result<(), EnnioError> {
         self.get_or_connect_node(ssh_config).await?;
-        let mut connections = self.node_connections.write().await;
-        let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
-            EnnioError::Node {
-                host: ssh_config.host.clone(), // clone: building error with host context
-                message: "node connection lost".to_owned(),
-            }
-        })?;
+        let node_arc = {
+            let connections = self.node_connections.read().await;
+            Arc::clone(connections.get(&ssh_config.host).ok_or_else(|| {
+                EnnioError::Node {
+                    host: ssh_config.host.clone(), // clone: building error with host context
+                    message: "node connection lost".to_owned(),
+                }
+            })?)
+        };
+        let mut node = node_arc.lock().await;
 
         if let Some(ref handle) = session.runtime_handle {
             if let Err(e) = node.destroy_runtime(handle).await {
@@ -816,13 +815,16 @@ impl SessionManager for DefaultSessionManager {
         if let Some(ssh_config) = &project.ssh_config {
             if Self::is_node_strategy(ssh_config) {
                 self.get_or_connect_node(ssh_config).await?;
-                let mut connections = self.node_connections.write().await;
-                let node = connections.get_mut(&ssh_config.host).ok_or_else(|| {
-                    EnnioError::Node {
-                        host: ssh_config.host.clone(), // clone: building error with host context
-                        message: "node connection lost".to_owned(),
-                    }
-                })?;
+                let node_arc = {
+                    let connections = self.node_connections.read().await;
+                    Arc::clone(connections.get(&ssh_config.host).ok_or_else(|| {
+                        EnnioError::Node {
+                            host: ssh_config.host.clone(), // clone: building error with host context
+                            message: "node connection lost".to_owned(),
+                        }
+                    })?)
+                };
+                let mut node = node_arc.lock().await;
                 node.send_message(handle, message)
                     .await
                     .map_err(|e| EnnioError::Node {

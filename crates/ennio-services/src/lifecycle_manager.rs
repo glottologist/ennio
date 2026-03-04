@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
@@ -15,7 +15,7 @@ use ennio_core::lifecycle::{LifecycleManager, SessionManager, SessionState};
 use ennio_core::reaction::ReactionConfig;
 use ennio_core::scm::{CIStatus, PRState, ReviewDecision};
 use ennio_core::session::{Session, SessionStatus};
-use ennio_db::repo::{events, sessions};
+use ennio_db::repo::sessions;
 use ennio_nats::EventPublisher;
 
 use crate::event_bus::EventBus;
@@ -34,13 +34,13 @@ impl ReactionTracker {
 
     fn get_attempts(&self, session_id: &SessionId, reaction_key: &str) -> u32 {
         self.attempt_counts
-            .get(&(session_id.clone(), reaction_key.to_owned()))
+            .get(&(session_id.clone(), reaction_key.to_owned())) // clone: HashMap lookup requires owned tuple key
             .copied()
             .unwrap_or(0)
     }
 
     fn increment_attempts(&mut self, session_id: &SessionId, reaction_key: &str) {
-        let key = (session_id.clone(), reaction_key.to_owned());
+        let key = (session_id.clone(), reaction_key.to_owned()); // clone: HashMap key needs owned value
         let count = self.attempt_counts.entry(key).or_insert(0);
         *count = count.saturating_add(1);
     }
@@ -54,7 +54,7 @@ pub struct DefaultLifecycleManager {
     registry: Arc<PluginRegistry>,
     event_bus: Arc<EventBus>,
     config: Arc<OrchestratorConfig>,
-    pool: PgPool,
+    pool: SqlitePool,
     publisher: Arc<EventPublisher>,
     session_manager: Arc<dyn SessionManager>,
     states: RwLock<HashMap<SessionId, SessionState>>,
@@ -67,7 +67,7 @@ impl DefaultLifecycleManager {
         registry: Arc<PluginRegistry>,
         event_bus: Arc<EventBus>,
         config: Arc<OrchestratorConfig>,
-        pool: PgPool,
+        pool: SqlitePool,
         publisher: Arc<EventPublisher>,
         session_manager: Arc<dyn SessionManager>,
     ) -> Self {
@@ -208,31 +208,34 @@ impl DefaultLifecycleManager {
         })
     }
 
+    async fn resolve_pr_number(
+        &self,
+        session: &Session,
+        project: &ennio_core::config::ProjectConfig,
+    ) -> Option<i32> {
+        if let Some(n) = session.pr_number {
+            return Some(n);
+        }
+
+        let branch = session.branch.as_deref()?;
+        let scm_config = project.scm_config.as_ref()?;
+        let scm = self.registry.get_scm(&scm_config.plugin).ok()?;
+
+        scm.detect_pr(&session.project_id, branch)
+            .await
+            .ok()
+            .flatten()
+            .map(|pr| pr.number)
+    }
+
     async fn determine_status_from_external(
         &self,
         session: &Session,
         project: &ennio_core::config::ProjectConfig,
     ) -> SessionStatus {
-        let pr_number = match session.pr_number {
+        let pr_number = match self.resolve_pr_number(session, project).await {
             Some(n) => n,
-            None => {
-                if let Some(branch) = session.branch.as_deref() {
-                    if let Some(scm_config) = &project.scm_config {
-                        if let Ok(scm) = self.registry.get_scm(&scm_config.plugin) {
-                            match scm.detect_pr(&session.project_id, branch).await {
-                                Ok(Some(pr)) => pr.number,
-                                _ => return session.status,
-                            }
-                        } else {
-                            return session.status;
-                        }
-                    } else {
-                        return session.status;
-                    }
-                } else {
-                    return session.status;
-                }
-            }
+            None => return session.status,
         };
 
         let scm_config = match &project.scm_config {
@@ -275,29 +278,7 @@ impl DefaultLifecycleManager {
             return SessionStatus::MergeConflicts;
         }
 
-        match (ci_status, review_decision) {
-            (CIStatus::Failing, _) => {
-                if session.status == SessionStatus::CiFixSent {
-                    SessionStatus::CiFixFailed
-                } else {
-                    SessionStatus::CiFailed
-                }
-            }
-            (CIStatus::Passing, ReviewDecision::Approved) => SessionStatus::Approved,
-            (CIStatus::Passing, ReviewDecision::ChangesRequested) => {
-                SessionStatus::ChangesRequested
-            }
-            (CIStatus::Passing, ReviewDecision::Pending) => SessionStatus::ReviewPending,
-            (CIStatus::Passing, _) => SessionStatus::CiPassing,
-            (_, ReviewDecision::ChangesRequested) => SessionStatus::ChangesRequested,
-            _ => {
-                if pr_state == PRState::Draft {
-                    SessionStatus::PrDraft
-                } else {
-                    SessionStatus::PrOpen
-                }
-            }
-        }
+        determine_status(ci_status, review_decision, pr_state, session.status)
     }
 
     async fn transition_status(
@@ -405,11 +386,63 @@ impl DefaultLifecycleManager {
                 );
             }
             ennio_core::reaction::ReactionAction::AutoMerge => {
-                info!(
-                    session_id = %session.id,
-                    "auto-merge reaction triggered"
-                );
-                // TODO: implement auto-merge via SCM plugin
+                let pr_number = match session.pr_number {
+                    Some(n) => n,
+                    None => {
+                        warn!(
+                            session_id = %session.id,
+                            "auto-merge skipped: no PR number"
+                        );
+                        return;
+                    }
+                };
+
+                let project = self.config.projects.iter().find(|p| {
+                    p.project_id
+                        .as_ref()
+                        .is_some_and(|id| id == &session.project_id)
+                });
+
+                let scm_config = match project.and_then(|p| p.scm_config.as_ref()) {
+                    Some(c) => c,
+                    None => {
+                        warn!(
+                            session_id = %session.id,
+                            "auto-merge skipped: no SCM config"
+                        );
+                        return;
+                    }
+                };
+
+                let scm = match self.registry.get_scm(&scm_config.plugin) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!(
+                            session_id = %session.id,
+                            error = %e,
+                            "auto-merge skipped: SCM plugin not found"
+                        );
+                        return;
+                    }
+                };
+
+                match scm.merge_pr(&session.project_id, pr_number).await {
+                    Ok(()) => {
+                        info!(
+                            session_id = %session.id,
+                            pr_number,
+                            "auto-merge completed"
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            session_id = %session.id,
+                            pr_number,
+                            error = %e,
+                            "auto-merge failed"
+                        );
+                    }
+                }
             }
         }
 
@@ -470,18 +503,40 @@ impl DefaultLifecycleManager {
 
         // clone: Arc reference count increment for async task ownership
         let publisher = Arc::clone(&self.publisher);
-        // clone: event must be owned by the spawned task
-        let event_for_nats = event.clone();
-        // clone: PgPool uses Arc internally, this is a cheap reference count increment
+        // clone: SqlitePool uses Arc internally, this is a cheap reference count increment
         let pool = self.pool.clone();
         tokio::spawn(async move {
-            if let Err(e) = publisher.publish_event(&event_for_nats).await {
-                warn!("failed to publish lifecycle event to NATS: {e}");
-            }
-            if let Err(e) = events::insert(&pool, &event_for_nats).await {
-                error!("failed to persist lifecycle event: {e}");
-            }
+            crate::events::emit_event(&pool, &publisher, event).await;
         });
+    }
+}
+
+fn determine_status(
+    ci_status: CIStatus,
+    review_decision: ReviewDecision,
+    pr_state: PRState,
+    current_status: SessionStatus,
+) -> SessionStatus {
+    match (ci_status, review_decision) {
+        (CIStatus::Failing, _) => {
+            if current_status == SessionStatus::CiFixSent {
+                SessionStatus::CiFixFailed
+            } else {
+                SessionStatus::CiFailed
+            }
+        }
+        (CIStatus::Passing, ReviewDecision::Approved) => SessionStatus::Approved,
+        (CIStatus::Passing, ReviewDecision::ChangesRequested) => SessionStatus::ChangesRequested,
+        (CIStatus::Passing, ReviewDecision::Pending) => SessionStatus::ReviewPending,
+        (CIStatus::Passing, _) => SessionStatus::CiPassing,
+        (_, ReviewDecision::ChangesRequested) => SessionStatus::ChangesRequested,
+        _ => {
+            if pr_state == PRState::Draft {
+                SessionStatus::PrDraft
+            } else {
+                SessionStatus::PrOpen
+            }
+        }
     }
 }
 
@@ -604,6 +659,73 @@ mod tests {
     fn default_reaction_messages_non_empty(#[case] key: &str) {
         let msg = default_reaction_message(key);
         assert!(!msg.is_empty());
+    }
+
+    #[rstest]
+    #[case(
+        CIStatus::Failing,
+        ReviewDecision::Pending,
+        PRState::Open,
+        SessionStatus::Working,
+        SessionStatus::CiFailed
+    )]
+    #[case(
+        CIStatus::Failing,
+        ReviewDecision::Pending,
+        PRState::Open,
+        SessionStatus::CiFixSent,
+        SessionStatus::CiFixFailed
+    )]
+    #[case(
+        CIStatus::Passing,
+        ReviewDecision::Approved,
+        PRState::Open,
+        SessionStatus::Working,
+        SessionStatus::Approved
+    )]
+    #[case(
+        CIStatus::Passing,
+        ReviewDecision::ChangesRequested,
+        PRState::Open,
+        SessionStatus::Working,
+        SessionStatus::ChangesRequested
+    )]
+    #[case(
+        CIStatus::Passing,
+        ReviewDecision::Pending,
+        PRState::Open,
+        SessionStatus::Working,
+        SessionStatus::ReviewPending
+    )]
+    #[case(
+        CIStatus::Pending,
+        ReviewDecision::ChangesRequested,
+        PRState::Open,
+        SessionStatus::Working,
+        SessionStatus::ChangesRequested
+    )]
+    #[case(
+        CIStatus::Pending,
+        ReviewDecision::Pending,
+        PRState::Draft,
+        SessionStatus::Working,
+        SessionStatus::PrDraft
+    )]
+    #[case(
+        CIStatus::Pending,
+        ReviewDecision::Pending,
+        PRState::Open,
+        SessionStatus::Working,
+        SessionStatus::PrOpen
+    )]
+    fn determine_status_from_ci_review(
+        #[case] ci: CIStatus,
+        #[case] review: ReviewDecision,
+        #[case] pr_state: PRState,
+        #[case] current: SessionStatus,
+        #[case] expected: SessionStatus,
+    ) {
+        assert_eq!(determine_status(ci, review, pr_state, current), expected);
     }
 
     #[test]

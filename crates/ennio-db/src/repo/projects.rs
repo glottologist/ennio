@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use ennio_core::config::ProjectConfig;
-use sqlx::postgres::PgRow;
-use sqlx::{PgPool, Row};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Row, SqlitePool};
 
 use crate::error::DbError;
 
@@ -17,7 +17,7 @@ pub struct ProjectRow {
     pub updated_at: DateTime<Utc>,
 }
 
-fn map_project_row(row: &PgRow) -> Result<ProjectRow, DbError> {
+fn map_project_row(row: &SqliteRow) -> Result<ProjectRow, DbError> {
     Ok(ProjectRow {
         project_id: row.try_get("project_id")?,
         name: row.try_get("name")?,
@@ -31,7 +31,7 @@ fn map_project_row(row: &PgRow) -> Result<ProjectRow, DbError> {
 }
 
 pub async fn upsert(
-    pool: &PgPool,
+    pool: &SqlitePool,
     project: &ProjectConfig,
     config_hash: &str,
 ) -> Result<(), DbError> {
@@ -46,14 +46,14 @@ pub async fn upsert(
     sqlx::query(
         r#"
         INSERT INTO projects (project_id, name, repo, path, default_branch, config_hash, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, datetime('now'))
         ON CONFLICT (project_id) DO UPDATE SET
             name = EXCLUDED.name,
             repo = EXCLUDED.repo,
             path = EXCLUDED.path,
             default_branch = EXCLUDED.default_branch,
             config_hash = EXCLUDED.config_hash,
-            updated_at = NOW()
+            updated_at = datetime('now')
         "#,
     )
     .bind(&project_id)
@@ -68,7 +68,7 @@ pub async fn upsert(
     Ok(())
 }
 
-pub async fn get(pool: &PgPool, project_id: &str) -> Result<Option<ProjectRow>, DbError> {
+pub async fn get(pool: &SqlitePool, project_id: &str) -> Result<Option<ProjectRow>, DbError> {
     let row = sqlx::query("SELECT * FROM projects WHERE project_id = $1")
         .bind(project_id)
         .fetch_optional(pool)
@@ -77,7 +77,7 @@ pub async fn get(pool: &PgPool, project_id: &str) -> Result<Option<ProjectRow>, 
     row.as_ref().map(map_project_row).transpose()
 }
 
-pub async fn list(pool: &PgPool) -> Result<Vec<ProjectRow>, DbError> {
+pub async fn list(pool: &SqlitePool) -> Result<Vec<ProjectRow>, DbError> {
     let rows = sqlx::query("SELECT * FROM projects ORDER BY name ASC")
         .fetch_all(pool)
         .await?;

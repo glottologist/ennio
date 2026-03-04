@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use ennio_core::id::SessionId;
-use sqlx::postgres::PgRow;
-use sqlx::{PgPool, Row};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Row, SqlitePool};
 
 use crate::error::DbError;
 
@@ -19,7 +19,7 @@ pub struct SessionMetricsRow {
     pub updated_at: DateTime<Utc>,
 }
 
-fn map_metrics_row(row: &PgRow) -> Result<SessionMetricsRow, DbError> {
+fn map_metrics_row(row: &SqliteRow) -> Result<SessionMetricsRow, DbError> {
     Ok(SessionMetricsRow {
         session_id: row.try_get("session_id")?,
         total_tokens_in: row.try_get("total_tokens_in")?,
@@ -35,7 +35,7 @@ fn map_metrics_row(row: &PgRow) -> Result<SessionMetricsRow, DbError> {
 }
 
 pub async fn upsert(
-    pool: &PgPool,
+    pool: &SqlitePool,
     session_id: &SessionId,
     metrics: &SessionMetricsRow,
 ) -> Result<(), DbError> {
@@ -45,7 +45,7 @@ pub async fn upsert(
             session_id, total_tokens_in, total_tokens_out,
             estimated_cost_usd, ci_runs, ci_failures, review_rounds,
             time_to_first_pr_secs, time_to_merge_secs, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))
         ON CONFLICT (session_id) DO UPDATE SET
             total_tokens_in = EXCLUDED.total_tokens_in,
             total_tokens_out = EXCLUDED.total_tokens_out,
@@ -55,7 +55,7 @@ pub async fn upsert(
             review_rounds = EXCLUDED.review_rounds,
             time_to_first_pr_secs = EXCLUDED.time_to_first_pr_secs,
             time_to_merge_secs = EXCLUDED.time_to_merge_secs,
-            updated_at = NOW()
+            updated_at = datetime('now')
         "#,
     )
     .bind(session_id.as_str())
@@ -74,7 +74,7 @@ pub async fn upsert(
 }
 
 pub async fn get(
-    pool: &PgPool,
+    pool: &SqlitePool,
     session_id: &SessionId,
 ) -> Result<Option<SessionMetricsRow>, DbError> {
     let row = sqlx::query("SELECT * FROM session_metrics WHERE session_id = $1")

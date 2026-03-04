@@ -6,19 +6,20 @@ use ennio_core::tracker::{
 };
 use reqwest::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::debug;
 use url::Url;
 
 pub struct GitHubTracker {
     client: Client,
-    token: String,
+    token: SecretString,
 }
 
 impl GitHubTracker {
     pub fn new(token: impl Into<String>) -> Self {
         Self {
             client: Client::new(),
-            token: token.into(),
+            token: SecretString::from(token.into()),
         }
     }
 }
@@ -36,7 +37,7 @@ fn parse_repo(project_id: &ProjectId) -> &str {
 
 impl GitHubTracker {
     fn auth_header(&self) -> String {
-        format!("Bearer {}", self.token)
+        format!("Bearer {}", self.token.expose_secret())
     }
 }
 
@@ -81,33 +82,27 @@ impl Tracker for GitHubTracker {
         Ok(matches!(issue.state, IssueState::Done | IssueState::Closed))
     }
 
-    fn issue_url(&self, project_id: &ProjectId, issue_id: &str) -> String {
+    fn issue_url(&self, project_id: &ProjectId, issue_id: &str) -> Result<String, EnnioError> {
         let repo = parse_repo(project_id);
-        format!("https://github.com/{repo}/issues/{issue_id}")
+        let mut url = Url::parse("https://github.com").map_err(|e| EnnioError::Tracker {
+            message: format!("invalid base URL: {e}"),
+        })?;
+        url.path_segments_mut()
+            .map_err(|()| EnnioError::Tracker {
+                message: "cannot-be-a-base URL".to_string(),
+            })?
+            .extend(repo.split('/'))
+            .push("issues")
+            .push(issue_id);
+        Ok(url.to_string())
     }
 
     fn branch_name(&self, issue: &Issue) -> String {
-        let sanitized: String = issue
-            .title
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' {
-                    c.to_ascii_lowercase()
-                } else {
-                    '-'
-                }
-            })
-            .collect();
-
-        let trimmed = sanitized.trim_matches('-');
-        let end = truncate_to_char_boundary(trimmed, 50);
-        let truncated = &trimmed[..end];
-        let truncated = truncated.trim_end_matches('-');
-
-        if truncated.is_empty() {
+        let sanitized = sanitize_title_for_branch(&issue.title, 50);
+        if sanitized.is_empty() {
             format!("issue-{}", issue.id)
         } else {
-            format!("issue-{}-{truncated}", issue.id)
+            format!("issue-{}-{sanitized}", issue.id)
         }
     }
 
@@ -405,20 +400,12 @@ fn parse_issue(value: &serde_json::Value) -> Result<Issue, EnnioError> {
     })
 }
 
-fn truncate_to_char_boundary(s: &str, max_bytes: usize) -> usize {
-    if max_bytes >= s.len() {
-        return s.len();
-    }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    end
-}
+use super::sanitize_title_for_branch;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tracker::truncate_to_char_boundary;
     use proptest::prelude::*;
 
     fn arb_github_issue_json() -> impl Strategy<Value = serde_json::Value> {

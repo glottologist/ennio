@@ -1,5 +1,6 @@
 pub mod config_loader;
 pub mod event_bus;
+mod events;
 pub mod lifecycle_manager;
 pub mod registry;
 pub mod session_manager;

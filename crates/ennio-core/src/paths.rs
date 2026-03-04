@@ -66,7 +66,6 @@ pub fn session_prefix_from_name(name: &str) -> String {
     prefix.to_lowercase()
 }
 
-/// Build a globally unique tmux session name.
 pub fn tmux_name(hash: &str, prefix: &str, num: u32) -> String {
     format!("{hash}-{prefix}-{num}")
 }
@@ -129,8 +128,15 @@ mod tests {
         assert_eq!(session_prefix_from_name(""), "");
     }
 
-    #[test]
-    fn tmux_name_format() {
-        assert_eq!(tmux_name("a3b4c5d6e7f8", "int", 1), "a3b4c5d6e7f8-int-1");
+    proptest! {
+        #[test]
+        fn tmux_name_format(
+            hash in "[a-f0-9]{12}",
+            prefix in "[a-z]{1,5}",
+            num in 0..1000u32,
+        ) {
+            let name = tmux_name(&hash, &prefix, num);
+            prop_assert_eq!(name, format!("{hash}-{prefix}-{num}"));
+        }
     }
 }

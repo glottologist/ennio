@@ -1,6 +1,6 @@
 [package]
 name = "ennio-db"
-description = "PostgreSQL storage layer for Ennio"
+description = "SQLite storage layer for Ennio"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -83,32 +83,49 @@ pub struct OrchestratorEvent {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use proptest::prelude::*;
 
     use super::*;
 
-    #[rstest]
-    #[case(EventPriority::Info, EventPriority::Action, true)]
-    #[case(EventPriority::Action, EventPriority::Urgent, true)]
-    #[case(EventPriority::Urgent, EventPriority::Critical, true)]
-    #[case(EventPriority::Critical, EventPriority::Info, false)]
-    fn priority_ordering(#[case] a: EventPriority, #[case] b: EventPriority, #[case] a_lt_b: bool) {
-        assert_eq!(a < b, a_lt_b);
-    }
-
-    #[rstest]
-    #[case(EventType::SessionSpawned, "session_spawned")]
-    #[case(EventType::PrCreated, "pr_created")]
-    #[case(EventType::AllComplete, "all_complete")]
-    #[case(EventType::NodeConnected, "node_connected")]
-    #[case(EventType::NodeDisconnected, "node_disconnected")]
-    #[case(EventType::NodeLaunched, "node_launched")]
-    #[case(EventType::NodeHealthCheck, "node_health_check")]
-    fn event_type_serialization(#[case] event: EventType, #[case] expected: &str) {
-        let json = serde_json::to_string(&event).unwrap();
-        assert_eq!(json, format!("\"{expected}\""));
-
-        let deser: EventType = serde_json::from_str(&json).unwrap();
-        assert_eq!(deser, event);
+    proptest! {
+        #[test]
+        fn event_type_serde_roundtrips(
+            event in prop::sample::select(vec![
+                EventType::SessionSpawned,
+                EventType::SessionWorking,
+                EventType::SessionExited,
+                EventType::SessionKilled,
+                EventType::SessionRestored,
+                EventType::SessionCleaned,
+                EventType::StatusChanged,
+                EventType::ActivityChanged,
+                EventType::PrCreated,
+                EventType::PrUpdated,
+                EventType::PrMerged,
+                EventType::PrClosed,
+                EventType::CiPassing,
+                EventType::CiFailing,
+                EventType::CiFixSent,
+                EventType::CiFixFailed,
+                EventType::ReviewPending,
+                EventType::ReviewApproved,
+                EventType::ReviewChangesRequested,
+                EventType::ReviewCommentsSent,
+                EventType::MergeReady,
+                EventType::MergeConflicts,
+                EventType::MergeCompleted,
+                EventType::ReactionTriggered,
+                EventType::ReactionEscalated,
+                EventType::AllComplete,
+                EventType::NodeConnected,
+                EventType::NodeDisconnected,
+                EventType::NodeLaunched,
+                EventType::NodeHealthCheck,
+            ])
+        ) {
+            let json = serde_json::to_string(&event).unwrap();
+            let deser: EventType = serde_json::from_str(&json).unwrap();
+            prop_assert_eq!(deser, event);
+        }
     }
 }

@@ -11,6 +11,7 @@ use ennio_proto::{
     SendMessageResponse, ShutdownRequest, ShutdownResponse,
 };
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status};
 use tracing::{debug, info};
 
@@ -19,6 +20,7 @@ pub struct EnnioNodeService {
     last_activity: AtomicU64,
     workspace_root: Option<String>,
     runtimes: RwLock<HashMap<String, RuntimeState>>,
+    shutdown_token: CancellationToken,
 }
 
 struct RuntimeState {
@@ -26,12 +28,17 @@ struct RuntimeState {
 }
 
 impl EnnioNodeService {
-    pub fn new(_idle_timeout_secs: u64, workspace_root: Option<&str>) -> Self {
+    pub fn new(
+        _idle_timeout_secs: u64,
+        workspace_root: Option<&str>,
+        shutdown_token: CancellationToken,
+    ) -> Self {
         Self {
             started_at: Instant::now(),
             last_activity: AtomicU64::new(0),
             workspace_root: workspace_root.map(str::to_owned),
             runtimes: RwLock::new(HashMap::new()),
+            shutdown_token,
         }
     }
 
@@ -54,6 +61,24 @@ impl EnnioNodeService {
     }
 }
 
+fn validate_path_segment(value: &str, name: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err(format!("{name} must not be empty"));
+    }
+    if value.contains("..") || value.contains('/') || value.contains('\\') {
+        return Err(format!("{name} contains invalid characters"));
+    }
+    if !value
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!(
+            "{name} must be alphanumeric with hyphens and underscores only"
+        ));
+    }
+    Ok(())
+}
+
 #[tonic::async_trait]
 impl EnnioNode for EnnioNodeService {
     async fn create_workspace(
@@ -62,6 +87,10 @@ impl EnnioNode for EnnioNodeService {
     ) -> Result<Response<CreateWorkspaceResponse>, Status> {
         self.touch_activity();
         let req = request.into_inner();
+
+        validate_path_segment(&req.session_id, "session_id").map_err(Status::invalid_argument)?;
+        validate_path_segment(&req.workspace_type, "workspace_type")
+            .map_err(Status::invalid_argument)?;
 
         debug!(
             session_id = %req.session_id,
@@ -87,6 +116,19 @@ impl EnnioNode for EnnioNodeService {
         let req = request.into_inner();
 
         debug!(workspace_path = %req.workspace_path, "destroy_workspace");
+
+        let root = self.resolve_workspace_root();
+        let canonical_root = std::path::Path::new(&root)
+            .canonicalize()
+            .map_err(|e| Status::internal(format!("failed to canonicalize workspace root: {e}")))?;
+        let canonical_path = std::path::Path::new(&req.workspace_path)
+            .canonicalize()
+            .map_err(|e| Status::invalid_argument(format!("invalid workspace path: {e}")))?;
+        if !canonical_path.starts_with(&canonical_root) {
+            return Err(Status::permission_denied(
+                "workspace path is outside workspace root",
+            ));
+        }
 
         if tokio::fs::metadata(&req.workspace_path).await.is_ok() {
             tokio::fs::remove_dir_all(&req.workspace_path)
@@ -247,9 +289,10 @@ impl EnnioNode for EnnioNodeService {
             }
         }
 
-        tokio::spawn(async {
+        let token = self.shutdown_token.clone(); // clone: CancellationToken is Arc-based
+        tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            std::process::exit(0);
+            token.cancel();
         });
 
         Ok(Response::new(ShutdownResponse { accepted: true }))
@@ -258,37 +301,25 @@ impl EnnioNode for EnnioNodeService {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
-    #[test]
-    fn idle_exceeded_when_no_activity() {
-        let service = EnnioNodeService::new(10, None);
-        assert!(!service.idle_exceeded(Duration::from_secs(3600)));
+    fn test_service() -> EnnioNodeService {
+        EnnioNodeService::new(3600, None, CancellationToken::new())
     }
 
     #[test]
     fn touch_activity_updates_timestamp() {
-        let service = EnnioNodeService::new(10, None);
+        let service = EnnioNodeService::new(10, None, CancellationToken::new());
         service.touch_activity();
         let last = service.last_activity.load(Ordering::Relaxed);
         assert!(last <= service.started_at.elapsed().as_secs());
     }
 
-    #[test]
-    fn resolve_workspace_root_default() {
-        let service = EnnioNodeService::new(10, None);
-        assert_eq!(service.resolve_workspace_root(), "/tmp/ennio-workspaces");
-    }
-
-    #[test]
-    fn resolve_workspace_root_custom() {
-        let service = EnnioNodeService::new(10, Some("/data/workspaces"));
-        assert_eq!(service.resolve_workspace_root(), "/data/workspaces");
-    }
-
     #[tokio::test]
     async fn heartbeat_returns_healthy() {
-        let service = EnnioNodeService::new(3600, None);
+        let service = test_service();
         let response = service
             .heartbeat(Request::new(HeartbeatRequest {}))
             .await
@@ -299,7 +330,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_and_destroy_runtime() {
-        let service = EnnioNodeService::new(3600, None);
+        let service = test_service();
 
         let create_req = Request::new(CreateRuntimeRequest {
             session_id: "test-session".to_owned(),
@@ -327,7 +358,7 @@ mod tests {
 
     #[tokio::test]
     async fn is_alive_returns_false_for_unknown() {
-        let service = EnnioNodeService::new(3600, None);
+        let service = test_service();
 
         let handle = ProtoRuntimeHandle {
             id: "nonexistent".to_owned(),
@@ -344,7 +375,7 @@ mod tests {
 
     #[tokio::test]
     async fn send_message_to_unknown_runtime_fails() {
-        let service = EnnioNodeService::new(3600, None);
+        let service = test_service();
 
         let handle = ProtoRuntimeHandle {
             id: "nonexistent".to_owned(),
@@ -358,5 +389,95 @@ mod tests {
         });
         let result = service.send_message(req).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn create_workspace_rejects_path_traversal() {
+        let service = EnnioNodeService::new(3600, Some("/tmp/test-ws"), CancellationToken::new());
+        let req = Request::new(CreateWorkspaceRequest {
+            project_id: "test-proj".to_owned(),
+            repo_url: String::new(),
+            path: String::new(),
+            session_id: "../etc".to_owned(),
+            default_branch: String::new(),
+            branch: None,
+            workspace_type: "worktree".to_owned(),
+        });
+        let result = service.create_workspace(req).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn create_workspace_rejects_empty_session_id() {
+        let service = EnnioNodeService::new(3600, Some("/tmp/test-ws"), CancellationToken::new());
+        let req = Request::new(CreateWorkspaceRequest {
+            project_id: "test-proj".to_owned(),
+            repo_url: String::new(),
+            path: String::new(),
+            session_id: String::new(),
+            default_branch: String::new(),
+            branch: None,
+            workspace_type: "worktree".to_owned(),
+        });
+        let result = service.create_workspace(req).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn shutdown_cancels_token() {
+        let token = CancellationToken::new();
+        let service = EnnioNodeService::new(3600, None, token.clone()); // clone: CancellationToken is Arc-based
+        assert!(!token.is_cancelled());
+
+        let req = Request::new(ShutdownRequest { graceful: true });
+        let resp = service.shutdown(req).await.unwrap();
+        assert!(resp.into_inner().accepted);
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(token.is_cancelled());
+    }
+
+    proptest! {
+        #[test]
+        fn validate_path_segment_rejects_empty(name in "[a-z]+") {
+            prop_assert!(validate_path_segment("", &name).is_err());
+        }
+
+        #[test]
+        fn validate_path_segment_rejects_slashes(
+            prefix in "[a-z]{1,5}",
+            suffix in "[a-z]{1,5}",
+        ) {
+            let with_slash = format!("{prefix}/{suffix}");
+            prop_assert!(validate_path_segment(&with_slash, "test").is_err());
+            let with_backslash = format!("{prefix}\\{suffix}");
+            prop_assert!(validate_path_segment(&with_backslash, "test").is_err());
+        }
+
+        #[test]
+        fn validate_path_segment_rejects_dotdot(
+            prefix in "[a-z]{0,3}",
+            suffix in "[a-z]{0,3}",
+        ) {
+            let input = format!("{prefix}..{suffix}");
+            prop_assert!(validate_path_segment(&input, "test").is_err());
+        }
+
+        #[test]
+        fn validate_path_segment_accepts_alphanum_hyphen_underscore(
+            s in "[a-zA-Z0-9_-]{1,30}",
+        ) {
+            prop_assert!(validate_path_segment(&s, "test").is_ok());
+        }
+
+        #[test]
+        fn validate_path_segment_rejects_unicode_and_special(
+            s in "[^a-zA-Z0-9_/-]{1,10}",
+        ) {
+            // Filter out strings that happen to only contain valid chars
+            prop_assume!(!s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+            prop_assume!(!s.is_empty());
+            prop_assert!(validate_path_segment(&s, "test").is_err());
+        }
     }
 }

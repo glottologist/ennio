@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use ennio_core::config::NodeConnectionConfig;
 use ennio_core::runtime::{RuntimeCreateConfig, RuntimeHandle};
@@ -9,18 +11,168 @@ use ennio_proto::{
     GetOutputRequest, HeartbeatRequest, IsAliveRequest, ProtoRuntimeHandle, SendMessageRequest,
     ShutdownRequest,
 };
+use secrecy::ExposeSecret;
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::Channel;
 use tracing::{debug, info};
 
 use crate::SshClient;
 use crate::error::SshError;
 
+const NODE_READY_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const NODE_READY_MAX_ATTEMPTS: u32 = 20;
+const TOKEN_BYTES: usize = 32;
+
+#[derive(Clone)]
+struct AuthInterceptor {
+    token: Option<Arc<str>>,
+}
+
+impl tonic::service::Interceptor for AuthInterceptor {
+    fn call(&mut self, mut req: tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> {
+        if let Some(ref token) = self.token {
+            let header_value: tonic::metadata::MetadataValue<tonic::metadata::Ascii> =
+                format!("Bearer {token}")
+                    .parse()
+                    .map_err(|_| tonic::Status::internal("invalid token format"))?;
+            req.metadata_mut().insert("authorization", header_value);
+        }
+        Ok(req)
+    }
+}
+
+fn generate_node_token() -> Result<String, SshError> {
+    let mut bytes = [0u8; TOKEN_BYTES];
+    getrandom::fill(&mut bytes).map_err(|e| SshError::Execution {
+        command: String::new(),
+        message: format!("failed to generate auth token: {e}"),
+    })?;
+    Ok(hex::encode(bytes))
+}
+
 pub struct RemoteNode {
     ssh_client: SshClient,
-    grpc_client: EnnioNodeClient<Channel>,
+    grpc_client: EnnioNodeClient<InterceptedService<Channel, AuthInterceptor>>,
     host: String,
     remote_port: u16,
     local_port: u16,
+}
+
+fn resolve_auth_token(config: &NodeConnectionConfig) -> Result<Option<String>, SshError> {
+    match &config.auth_token {
+        Some(token) => Ok(Some(token.expose_secret().to_owned())),
+        None => Ok(Some(generate_node_token()?)),
+    }
+}
+
+fn resolve_binary_path(config: &NodeConnectionConfig) -> String {
+    config
+        .ennio_binary_path
+        .as_deref()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ennio-node".to_owned())
+}
+
+fn build_launch_command(
+    config: &NodeConnectionConfig,
+    binary_path: &str,
+    auth_token: Option<&str>,
+) -> String {
+    let escaped_binary = shell_escape::escape(binary_path.into());
+    let mut cmd = format!(
+        "{escaped_binary} --port {} --idle-timeout {}",
+        config.port,
+        config.idle_timeout.as_secs()
+    );
+
+    if let Some(ref ws_root) = config.workspace_root {
+        cmd.push_str(&format!(
+            " --workspace-root {}",
+            shell_escape::escape(ws_root.to_string_lossy())
+        ));
+    }
+
+    match auth_token {
+        Some(token) => format!(
+            "ENNIO_NODE_AUTH_TOKEN={} {cmd}",
+            shell_escape::escape(token.into())
+        ),
+        None => cmd,
+    }
+}
+
+async fn ensure_daemon_running(
+    ssh_client: &SshClient,
+    config: &NodeConnectionConfig,
+    host: &str,
+    auth_token: Option<&str>,
+    binary_path: &str,
+) -> Result<(), SshError> {
+    let remote_port = config.port;
+    let port_check_cmd = format!("ss -tlnp 2>/dev/null | grep :{remote_port} || echo NOT_RUNNING");
+
+    let check_output = ssh_client
+        .exec(&port_check_cmd)
+        .await
+        .map_err(|e| SshError::Tunnel {
+            message: format!("failed to check daemon status: {e}"),
+        })?;
+
+    if !check_output.stdout.contains("NOT_RUNNING") {
+        return Ok(());
+    }
+
+    info!(
+        host = host,
+        port = remote_port,
+        "launching ennio-node daemon"
+    );
+
+    let launch_cmd = build_launch_command(config, binary_path, auth_token);
+    ssh_client
+        .exec_detached(&launch_cmd)
+        .await
+        .map_err(|e| SshError::Tunnel {
+            message: format!("failed to launch ennio-node: {e}"),
+        })?;
+
+    poll_daemon_ready(ssh_client, &port_check_cmd).await
+}
+
+async fn poll_daemon_ready(ssh_client: &SshClient, port_check_cmd: &str) -> Result<(), SshError> {
+    for attempt in 0..NODE_READY_MAX_ATTEMPTS {
+        if let Ok(output) = ssh_client.exec(port_check_cmd).await {
+            if !output.stdout.contains("NOT_RUNNING") {
+                debug!(attempt, "ennio-node daemon is ready");
+                return Ok(());
+            }
+        }
+        tokio::time::sleep(NODE_READY_POLL_INTERVAL).await;
+    }
+    Err(SshError::Timeout {
+        duration: NODE_READY_POLL_INTERVAL * NODE_READY_MAX_ATTEMPTS,
+    })
+}
+
+async fn connect_grpc_client(
+    local_port: u16,
+    auth_token: Option<String>,
+) -> Result<EnnioNodeClient<InterceptedService<Channel, AuthInterceptor>>, SshError> {
+    let endpoint = format!("http://127.0.0.1:{local_port}");
+    let channel = Channel::from_shared(endpoint)
+        .map_err(|e| SshError::Tunnel {
+            message: format!("invalid endpoint: {e}"),
+        })?
+        .connect()
+        .await
+        .map_err(|e| SshError::Tunnel {
+            message: format!("failed to connect gRPC client: {e}"),
+        })?;
+
+    let interceptor = AuthInterceptor {
+        token: auth_token.map(|t| Arc::from(t.as_str())),
+    };
+    Ok(EnnioNodeClient::with_interceptor(channel, interceptor))
 }
 
 impl RemoteNode {
@@ -31,50 +183,17 @@ impl RemoteNode {
     ) -> Result<Self, SshError> {
         let remote_port = config.port;
         let local_port = remote_port;
+        let auth_token = resolve_auth_token(config)?;
+        let binary_path = resolve_binary_path(config);
 
-        let binary_path = config
-            .ennio_binary_path
-            .as_deref()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "ennio-node".to_owned());
-
-        let check_output = ssh_client
-            .exec(&format!(
-                "ss -tlnp 2>/dev/null | grep :{remote_port} || echo NOT_RUNNING"
-            ))
-            .await
-            .map_err(|e| SshError::Tunnel {
-                message: format!("failed to check daemon status: {e}"),
-            })?;
-
-        if check_output.stdout.contains("NOT_RUNNING") {
-            info!(
-                host = host,
-                port = remote_port,
-                "launching ennio-node daemon"
-            );
-
-            let mut launch_cmd = format!(
-                "{binary_path} --port {remote_port} --idle-timeout {}",
-                config.idle_timeout.as_secs()
-            );
-
-            if let Some(ref ws_root) = config.workspace_root {
-                launch_cmd.push_str(&format!(
-                    " --workspace-root {}",
-                    shell_escape::escape(ws_root.to_string_lossy())
-                ));
-            }
-
-            ssh_client
-                .exec_detached(&launch_cmd)
-                .await
-                .map_err(|e| SshError::Tunnel {
-                    message: format!("failed to launch ennio-node: {e}"),
-                })?;
-
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        }
+        ensure_daemon_running(
+            ssh_client,
+            config,
+            host,
+            auth_token.as_deref(),
+            &binary_path,
+        )
+        .await?;
 
         debug!(
             host = host,
@@ -87,13 +206,7 @@ impl RemoteNode {
             .forward_local_port(local_port, "127.0.0.1", remote_port)
             .await?;
 
-        let endpoint = format!("http://127.0.0.1:{local_port}");
-        let grpc_client =
-            EnnioNodeClient::connect(endpoint)
-                .await
-                .map_err(|e| SshError::Tunnel {
-                    message: format!("failed to connect gRPC client: {e}"),
-                })?;
+        let grpc_client = connect_grpc_client(local_port, auth_token).await?;
 
         Ok(Self {
             ssh_client: ssh_client.clone(), // clone: SshClient uses Arc internally
@@ -292,26 +405,5 @@ impl std::fmt::Debug for RemoteNode {
             .field("remote_port", &self.remote_port)
             .field("local_port", &self.local_port)
             .finish_non_exhaustive()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use proptest::prelude::*;
-    use rstest::rstest;
-
-    #[rstest]
-    #[case(1024u16)]
-    #[case(9100u16)]
-    #[case(65535u16)]
-    fn valid_port_range(#[case] port: u16) {
-        assert!(port >= 1024);
-    }
-
-    proptest! {
-        #[test]
-        fn port_range_always_valid(port in 1024u16..=65535) {
-            prop_assert!(port >= 1024);
-        }
     }
 }

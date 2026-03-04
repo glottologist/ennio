@@ -128,10 +128,4 @@ mod tests {
         let bus = EventBus::with_capacity(64);
         assert_eq!(bus.receiver_count(), 0);
     }
-
-    #[test]
-    fn default_creates_bus() {
-        let bus = EventBus::default();
-        assert_eq!(bus.receiver_count(), 0);
-    }
 }

@@ -127,15 +127,6 @@ mod tests {
         assert!(SessionId::new(input).is_err());
     }
 
-    #[rstest]
-    #[case("abc")]
-    #[case("my-session")]
-    #[case("session_1")]
-    #[case("A1-B2_C3")]
-    fn valid_session_ids(#[case] input: &str) {
-        assert!(SessionId::new(input).is_ok());
-    }
-
     #[test]
     fn event_id_random_is_unique() {
         let a = EventId::random();

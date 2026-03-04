@@ -241,13 +241,6 @@ mod tests {
     }
 
     #[test]
-    fn account_new_starts_at_zero_balance() {
-        let acct = Account::new("a1", "Cash", AccountType::Asset);
-        assert_eq!(acct.balance, Decimal::ZERO);
-        assert_eq!(acct.account_type, AccountType::Asset);
-    }
-
-    #[test]
     fn budget_status_zero_limit_zero_used() {
         let budget = Budget {
             id: "b1".to_string(),

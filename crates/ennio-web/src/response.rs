@@ -34,7 +34,10 @@ impl From<EnnioError> for ApiError {
             EnnioError::Config { .. } => (400, err.to_string()),
             EnnioError::Budget { .. } => (402, err.to_string()),
             EnnioError::Timeout { .. } => (504, err.to_string()),
-            _ => (500, err.to_string()),
+            _ => {
+                tracing::error!(error = %err, "internal server error");
+                (500, "internal server error".to_owned())
+            }
         };
         Self {
             error: message,

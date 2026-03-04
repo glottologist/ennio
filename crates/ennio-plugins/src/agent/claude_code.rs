@@ -154,7 +154,7 @@ impl Agent for ClaudeCodeAgent {
             _ => ActivityState::Active,
         };
 
-        let _ = ready_threshold;
+        let _ready_threshold = ready_threshold;
 
         debug!(
             session_id = %session.id,

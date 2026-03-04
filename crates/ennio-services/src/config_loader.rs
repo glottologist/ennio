@@ -51,7 +51,7 @@ pub fn load_config(path: &Path) -> Result<OrchestratorConfig, EnnioError> {
     })?;
 
     let content = std::fs::read_to_string(&canonical).map_err(|e| EnnioError::Io {
-        path: Some(canonical.clone()),
+        path: Some(canonical.clone()), // clone: canonical used after this for parsing
         source: e,
     })?;
 
@@ -126,7 +126,7 @@ mod tests {
     use std::path::PathBuf;
 
     use ennio_core::config::{DefaultPlugins, ProjectConfig};
-    use rstest::rstest;
+    use proptest::prelude::*;
 
     use super::*;
 
@@ -245,12 +245,86 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[rstest]
-    #[case("ennio.yaml")]
-    #[case("ennio.yml")]
-    #[case(".ennio.yaml")]
-    #[case(".ennio.yml")]
-    fn config_file_names_are_recognized(#[case] name: &str) {
-        assert!(CONFIG_FILE_NAMES.contains(&name));
+    #[test]
+    fn find_config_file_discovers_ennio_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("ennio.yaml");
+        let config = minimal_config(vec![minimal_project("test", "/tmp/test")]);
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        std::fs::write(&config_path, &yaml).unwrap();
+
+        let found = find_config_file(Some(dir.path())).unwrap();
+        assert_eq!(found, config_path.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn find_config_file_discovers_in_parent_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("ennio.yaml");
+        let yaml =
+            serde_yaml::to_string(&minimal_config(vec![minimal_project("x", "/tmp/x")])).unwrap();
+        std::fs::write(&config_path, &yaml).unwrap();
+
+        let child = dir.path().join("subdir");
+        std::fs::create_dir(&child).unwrap();
+
+        let found = find_config_file(Some(&child)).unwrap();
+        assert_eq!(found, config_path.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn find_config_file_returns_error_when_none_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = find_config_file(Some(dir.path()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_config_parses_valid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("ennio.yaml");
+        let config = minimal_config(vec![minimal_project("test", "/tmp/test")]);
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        std::fs::write(&config_path, &yaml).unwrap();
+
+        let loaded = load_config(&config_path).unwrap();
+        assert_eq!(loaded.projects.len(), 1);
+        assert_eq!(loaded.projects[0].name, "test");
+    }
+
+    #[test]
+    fn load_config_rejects_invalid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("ennio.yaml");
+        std::fs::write(&config_path, "not: [valid: yaml: {{{").unwrap();
+
+        let result = load_config(&config_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_config_rejects_nonexistent_file() {
+        let result = load_config(Path::new("/nonexistent/ennio.yaml"));
+        assert!(result.is_err());
+    }
+
+    proptest! {
+        #[test]
+        fn config_yaml_roundtrip(
+            name in "[a-z][a-z0-9-]{0,10}",
+            port in 1024..65535u16,
+        ) {
+            let config = OrchestratorConfig {
+                port,
+                ..minimal_config(vec![minimal_project(&name, "/tmp/test")])
+            };
+
+            let yaml = serde_yaml::to_string(&config).unwrap();
+            let parsed: OrchestratorConfig = serde_yaml::from_str(&yaml).unwrap();
+
+            prop_assert_eq!(parsed.port, config.port);
+            prop_assert_eq!(parsed.projects.len(), 1);
+            prop_assert_eq!(&parsed.projects[0].name, &name);
+        }
     }
 }

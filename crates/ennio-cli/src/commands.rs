@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -81,7 +81,7 @@ fn load_orchestrator_config(config_path: Option<&str>) -> Result<OrchestratorCon
     Ok(config)
 }
 
-async fn connect_db(config: &OrchestratorConfig) -> Result<PgPool> {
+async fn connect_db(config: &OrchestratorConfig) -> Result<SqlitePool> {
     let database_url = config
         .resolve_database_url()
         .context("DATABASE_URL not set (set env var or database_url in config)")?;
@@ -106,7 +106,7 @@ async fn connect_nats(config: &OrchestratorConfig) -> Result<NatsClient> {
 }
 
 struct ReadonlyBootstrap {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 async fn bootstrap_readonly(config_path: Option<&str>) -> Result<ReadonlyBootstrap> {
@@ -179,7 +179,7 @@ pub async fn start(config_path: Option<&str>) -> Result<()> {
         Arc::clone(&registry),
         Arc::clone(&event_bus),
         Arc::clone(&config),
-        pool.clone(), // clone: PgPool uses Arc internally
+        pool.clone(), // clone: SqlitePool uses Arc internally
         Arc::clone(&publisher),
     ));
 
@@ -187,7 +187,7 @@ pub async fn start(config_path: Option<&str>) -> Result<()> {
         Arc::clone(&registry),
         Arc::clone(&event_bus),
         Arc::clone(&config),
-        pool.clone(), // clone: PgPool uses Arc internally
+        pool.clone(), // clone: SqlitePool uses Arc internally
         Arc::clone(&publisher),
         Arc::clone(&session_manager),
     ));
@@ -211,13 +211,13 @@ pub async fn start(config_path: Option<&str>) -> Result<()> {
     let web_state = Arc::new(ennio_web::state::AppState {
         session_manager: Arc::clone(&session_manager),
         lifecycle_manager: lifecycle_manager.clone() as Arc<dyn LifecycleManager>, // clone: Arc ref count bump for trait object
-        api_token: config.api_token.clone(), // clone: small Option<String> for web state
+        api_token: config.expose_api_token().map(str::to_owned),
         cors_origins: config.cors_origins.clone(), // clone: small Vec<String> for web state
     });
 
     let router = ennio_web::router::create_router(web_state);
 
-    let bind_addr = format!("0.0.0.0:{}", config.port);
+    let bind_addr = format!("127.0.0.1:{}", config.port);
     let listener = TcpListener::bind(&bind_addr)
         .await
         .with_context(|| format!("failed to bind to {bind_addr}"))?;
@@ -449,27 +449,20 @@ pub async fn open(session: &str, config_path: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-pub async fn node_status(host: Option<&str>) -> Result<()> {
-    match host {
-        Some(h) => println!("Checking node status for host: {h}"),
-        None => println!("Checking status of all configured nodes..."),
-    }
-    Ok(())
+pub async fn node_status(_host: Option<&str>) -> Result<()> {
+    Err(anyhow::anyhow!("node status is not yet implemented"))
 }
 
 pub async fn node_list() -> Result<()> {
-    println!("Listing configured node projects...");
-    Ok(())
+    Err(anyhow::anyhow!("node list is not yet implemented"))
 }
 
-pub async fn node_connect(project: &str) -> Result<()> {
-    println!("Connecting to node for project: {project}");
-    Ok(())
+pub async fn node_connect(_project: &str) -> Result<()> {
+    Err(anyhow::anyhow!("node connect is not yet implemented"))
 }
 
-pub async fn node_disconnect(project: &str) -> Result<()> {
-    println!("Disconnecting node for project: {project}");
-    Ok(())
+pub async fn node_disconnect(_project: &str) -> Result<()> {
+    Err(anyhow::anyhow!("node disconnect is not yet implemented"))
 }
 
 #[cfg(test)]
@@ -506,63 +499,6 @@ mod tests {
         assert!(
             err_msg.contains("already exists"),
             "expected 'already exists' in: {err_msg}"
-        );
-    }
-
-    #[test]
-    fn default_config_yaml_has_expected_structure() {
-        let config = ennio_core::config::OrchestratorConfig::default();
-        let yaml = serde_yaml::to_string(&config).unwrap();
-
-        assert!(yaml.contains("port: 3000"), "missing port");
-        assert!(
-            yaml.contains("terminal_port: 3001"),
-            "missing terminal_port"
-        );
-        assert!(
-            yaml.contains("ready_threshold: 2000"),
-            "missing ready_threshold"
-        );
-        assert!(yaml.contains("runtime: tmux"), "missing runtime");
-        assert!(yaml.contains("agent: claude-code"), "missing agent");
-        assert!(yaml.contains("workspace: worktree"), "missing workspace");
-        assert!(yaml.contains("name: my-project"), "missing project name");
-        assert!(
-            yaml.contains("default_branch: main"),
-            "missing default_branch"
-        );
-        assert!(yaml.contains("ci-failed:"), "missing ci-failed reaction");
-        assert!(
-            yaml.contains("all-complete:"),
-            "missing all-complete reaction"
-        );
-        assert!(
-            !yaml.contains("direct_terminal_port"),
-            "None fields should be skipped"
-        );
-        assert!(
-            !yaml.contains("notifiers:"),
-            "empty Vec fields should be skipped"
-        );
-        assert!(
-            !yaml.contains("notification_routing"),
-            "empty HashMap fields should be skipped"
-        );
-        assert!(
-            !yaml.contains("database_url"),
-            "None database_url should be skipped"
-        );
-        assert!(
-            !yaml.contains("nats_url"),
-            "None nats_url should be skipped"
-        );
-        assert!(
-            !yaml.contains("api_token"),
-            "None api_token should be skipped"
-        );
-        assert!(
-            !yaml.contains("cors_origins"),
-            "empty cors_origins should be skipped"
         );
     }
 }

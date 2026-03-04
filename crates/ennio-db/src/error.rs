@@ -8,6 +8,9 @@ pub enum DbError {
     #[error("migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
 
+    #[error("connection error: {0}")]
+    Connection(String),
+
     #[error("row mapping error: {0}")]
     RowMapping(String),
 

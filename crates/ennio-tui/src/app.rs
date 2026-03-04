@@ -226,11 +226,22 @@ mod tests {
     }
 
     #[rstest]
+    #[case(SessionStatus::Spawning, "spawning")]
     #[case(SessionStatus::Working, "working")]
-    #[case(SessionStatus::CiFailed, "ci_failed")]
     #[case(SessionStatus::PrOpen, "pr_open")]
-    #[case(SessionStatus::Killed, "killed")]
+    #[case(SessionStatus::PrDraft, "pr_draft")]
+    #[case(SessionStatus::CiPassing, "ci_passing")]
+    #[case(SessionStatus::CiFailed, "ci_failed")]
+    #[case(SessionStatus::CiFixSent, "ci_fix_sent")]
+    #[case(SessionStatus::CiFixFailed, "ci_fix_failed")]
+    #[case(SessionStatus::ReviewPending, "review_pending")]
+    #[case(SessionStatus::ChangesRequested, "changes_requested")]
+    #[case(SessionStatus::Approved, "approved")]
+    #[case(SessionStatus::MergeConflicts, "merge_conflicts")]
+    #[case(SessionStatus::Merged, "merged")]
+    #[case(SessionStatus::Done, "done")]
     #[case(SessionStatus::Exited, "exited")]
+    #[case(SessionStatus::Killed, "killed")]
     fn status_label_correct(#[case] status: SessionStatus, #[case] expected: &str) {
         let view = make_session_view("test", status);
         assert_eq!(view.status_label(), expected);

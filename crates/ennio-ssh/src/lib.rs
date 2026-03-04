@@ -8,7 +8,6 @@ pub mod strategy;
 pub mod workspace;
 
 pub use client::{ExecOutput, SshClient};
-pub use config::{HostKeyPolicy, SshAuth, SshConfig, SshStrategy};
 pub use error::SshError;
 pub use node::RemoteNode;
 pub use runtime::SshRuntime;

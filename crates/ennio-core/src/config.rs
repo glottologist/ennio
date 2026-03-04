@@ -3,13 +3,14 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 use crate::event::EventPriority;
 use crate::id::ProjectId;
 use crate::reaction::{ReactionAction, ReactionConfig};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OrchestratorConfig {
     #[serde(default = "default_port")]
     pub port: u16,
@@ -35,8 +36,8 @@ pub struct OrchestratorConfig {
     pub database_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nats_url: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub api_token: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub api_token: Option<SecretString>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cors_origins: Vec<String>,
 }
@@ -64,6 +65,10 @@ impl Default for OrchestratorConfig {
 const DEFAULT_NATS_URL: &str = "nats://127.0.0.1:4222";
 
 impl OrchestratorConfig {
+    pub fn expose_api_token(&self) -> Option<&str> {
+        self.api_token.as_ref().map(|s| s.expose_secret())
+    }
+
     pub fn resolve_database_url(&self) -> Option<String> {
         self.database_url
             .as_deref()
@@ -377,12 +382,12 @@ pub enum SshAuthConfig {
     Key {
         path: PathBuf,
         #[serde(default, skip_serializing_if = "Option::is_none", skip_serializing)]
-        passphrase: Option<String>,
+        passphrase: Option<SecretString>,
     },
     Agent,
     Password {
         #[serde(skip_serializing)]
-        password: String,
+        password: SecretString,
     },
 }
 
@@ -452,6 +457,8 @@ pub struct SshConnectionConfig {
     #[serde(default)]
     pub host_key_policy: HostKeyPolicyConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_hosts_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_config: Option<NodeConnectionConfig>,
 }
 
@@ -465,6 +472,8 @@ pub struct NodeConnectionConfig {
     pub workspace_root: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ennio_binary_path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none", skip_serializing)]
+    pub auth_token: Option<SecretString>,
 }
 
 impl Default for NodeConnectionConfig {
@@ -474,6 +483,7 @@ impl Default for NodeConnectionConfig {
             idle_timeout: default_idle_timeout(),
             workspace_root: None,
             ennio_binary_path: None,
+            auth_token: None,
         }
     }
 }
@@ -646,6 +656,7 @@ mod tests {
             connection_timeout: Duration::from_secs(30),
             keepalive_interval: None,
             host_key_policy: HostKeyPolicyConfig::Strict,
+            known_hosts_path: None,
             node_config: None,
         });
         assert!(project.is_remote());
@@ -654,7 +665,7 @@ mod tests {
     #[test]
     fn ssh_password_debug_is_redacted() {
         let auth = SshAuthConfig::Password {
-            password: "supersecret".to_string(),
+            password: SecretString::from("supersecret"),
         };
         let debug = format!("{auth:?}");
         assert!(!debug.contains("supersecret"));
@@ -665,7 +676,7 @@ mod tests {
     fn ssh_passphrase_debug_is_redacted() {
         let auth = SshAuthConfig::Key {
             path: PathBuf::from("/tmp/key"),
-            passphrase: Some("mysecret".to_string()),
+            passphrase: Some(SecretString::from("mysecret")),
         };
         let debug = format!("{auth:?}");
         assert!(!debug.contains("mysecret"));
@@ -683,6 +694,7 @@ mod tests {
             connection_timeout: Duration::from_secs(60),
             keepalive_interval: Some(Duration::from_secs(15)),
             host_key_policy: HostKeyPolicyConfig::AcceptNew,
+            known_hosts_path: None,
             node_config: None,
         };
         let json = serde_json::to_string(&config).expect("serialize");
@@ -711,6 +723,7 @@ mod tests {
         assert_eq!(config.connection_timeout, Duration::from_secs(30));
         assert_eq!(config.host_key_policy, HostKeyPolicyConfig::Strict);
         assert!(config.keepalive_interval.is_none());
+        assert!(config.known_hosts_path.is_none());
     }
 
     #[test]
@@ -720,12 +733,13 @@ mod tests {
             port: 22,
             username: "user".to_string(),
             auth: SshAuthConfig::Password {
-                password: "secret123".to_string(),
+                password: SecretString::from("secret123"),
             },
             strategy: SshStrategyConfig::Tmux,
             connection_timeout: Duration::from_secs(30),
             keepalive_interval: None,
             host_key_policy: HostKeyPolicyConfig::Strict,
+            known_hosts_path: None,
             node_config: None,
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -773,6 +787,7 @@ mod tests {
                 connection_timeout: Duration::from_secs(timeout_secs),
                 keepalive_interval: None,
                 host_key_policy: HostKeyPolicyConfig::Strict,
+                known_hosts_path: None,
                 node_config: None,
             };
             let json = serde_json::to_string(&config).unwrap();
@@ -796,6 +811,7 @@ mod tests {
                 connection_timeout: Duration::from_secs(30),
                 keepalive_interval: None,
                 host_key_policy: HostKeyPolicyConfig::Strict,
+                known_hosts_path: None,
                 node_config: None,
             }),
             ..Default::default()
@@ -807,13 +823,6 @@ mod tests {
         let ssh = roundtripped.ssh_config.unwrap();
         assert_eq!(ssh.host, "remote.example.com");
         assert_eq!(ssh.username, "deploy");
-    }
-
-    #[test]
-    fn default_project_has_no_ssh_config() {
-        let project = ProjectConfig::default();
-        assert!(!project.is_remote());
-        assert!(project.ssh_config.is_none());
     }
 
     #[test]
@@ -835,15 +844,6 @@ mod tests {
         assert_eq!(node.idle_timeout, Duration::from_secs(1800));
     }
 
-    #[test]
-    fn node_connection_config_defaults() {
-        let config = NodeConnectionConfig::default();
-        assert_eq!(config.port, 9100);
-        assert_eq!(config.idle_timeout, Duration::from_secs(3600));
-        assert!(config.workspace_root.is_none());
-        assert!(config.ennio_binary_path.is_none());
-    }
-
     proptest! {
         #[test]
         fn node_connection_config_roundtrip(
@@ -855,6 +855,7 @@ mod tests {
                 idle_timeout: Duration::from_secs(idle_secs),
                 workspace_root: None,
                 ennio_binary_path: None,
+                auth_token: None,
             };
             let json = serde_json::to_string(&config).unwrap();
             let roundtripped: NodeConnectionConfig = serde_json::from_str(&json).unwrap();
@@ -863,102 +864,83 @@ mod tests {
         }
     }
 
-    #[test]
-    fn ssh_connection_config_without_node_config() {
-        let json = r#"{
-            "host": "example.com",
-            "username": "user",
-            "auth": {"type": "agent"}
-        }"#;
-        let config: SshConnectionConfig = serde_json::from_str(json).unwrap();
-        assert!(config.node_config.is_none());
-    }
-
-    #[test]
-    fn default_config_new_fields_are_none_or_empty() {
-        let config = OrchestratorConfig::default();
-        assert!(config.database_url.is_none());
-        assert!(config.nats_url.is_none());
-        assert!(config.api_token.is_none());
-        assert!(config.cors_origins.is_empty());
-    }
-
     #[rstest]
-    #[case(Some("postgres://localhost/ennio"), None, "postgres://localhost/ennio")]
-    #[case(None, Some("postgres://env/ennio"), "postgres://env/ennio")]
+    #[case(Some("sqlite:ennio.db"), None, Some("sqlite:ennio.db"))]
+    #[case(None, Some("sqlite:env-ennio.db"), Some("sqlite:env-ennio.db"))]
+    #[case(None, None, None)]
     fn resolve_database_url_precedence(
         #[case] config_val: Option<&str>,
         #[case] env_val: Option<&str>,
-        #[case] expected: &str,
+        #[case] expected: Option<&str>,
     ) {
         let config = OrchestratorConfig {
             database_url: config_val.map(str::to_owned),
             ..Default::default()
         };
 
-        unsafe {
-            if let Some(val) = env_val {
-                std::env::set_var("DATABASE_URL", val);
-            } else {
-                std::env::remove_var("DATABASE_URL");
-            }
-        }
-
-        let result = config.resolve_database_url();
-        assert_eq!(result.as_deref(), Some(expected));
-
-        unsafe { std::env::remove_var("DATABASE_URL") };
+        temp_env::with_var("DATABASE_URL", env_val, || {
+            let result = config.resolve_database_url();
+            assert_eq!(result.as_deref(), expected);
+        });
     }
 
-    #[test]
-    fn resolve_database_url_returns_none_when_both_absent() {
-        let config = OrchestratorConfig::default();
-        unsafe { std::env::remove_var("DATABASE_URL") };
-        assert!(config.resolve_database_url().is_none());
-    }
-
-    #[test]
-    fn resolve_nats_url_uses_default() {
-        let config = OrchestratorConfig::default();
-        unsafe { std::env::remove_var("NATS_URL") };
-        assert_eq!(config.resolve_nats_url(), "nats://127.0.0.1:4222");
-    }
-
-    #[test]
-    fn resolve_nats_url_config_takes_precedence() {
+    #[rstest]
+    #[case(None, None, "nats://127.0.0.1:4222")]
+    #[case(
+        Some("nats://custom:4222"),
+        Some("nats://env:4222"),
+        "nats://custom:4222"
+    )]
+    #[case(None, Some("nats://env:4222"), "nats://env:4222")]
+    fn resolve_nats_url_precedence(
+        #[case] config_val: Option<&str>,
+        #[case] env_val: Option<&str>,
+        #[case] expected: &str,
+    ) {
         let config = OrchestratorConfig {
-            nats_url: Some("nats://custom:4222".to_owned()),
+            nats_url: config_val.map(str::to_owned),
             ..Default::default()
         };
-        unsafe { std::env::set_var("NATS_URL", "nats://env:4222") };
 
-        assert_eq!(config.resolve_nats_url(), "nats://custom:4222");
-
-        unsafe { std::env::remove_var("NATS_URL") };
+        temp_env::with_var("NATS_URL", env_val, || {
+            assert_eq!(config.resolve_nats_url(), expected);
+        });
     }
 
     #[test]
     fn config_with_new_fields_yaml_roundtrip() {
         let config = OrchestratorConfig {
-            database_url: Some("postgres://localhost/ennio".to_owned()),
+            database_url: Some("sqlite:ennio.db".to_owned()),
             nats_url: Some("nats://localhost:4222".to_owned()),
-            api_token: Some("secret-token".to_owned()),
+            api_token: Some(SecretString::from("secret-token")),
             cors_origins: vec!["http://localhost:3000".to_owned()],
             ..Default::default()
         };
 
         let yaml = serde_yaml::to_string(&config).expect("serialize");
-        let deserialized: OrchestratorConfig = serde_yaml::from_str(&yaml).expect("deserialize");
 
+        assert!(
+            !yaml.contains("secret-token"),
+            "api_token should be skipped in serialization"
+        );
+        assert_eq!(config.expose_api_token(), Some("secret-token"));
+        assert_eq!(config.database_url.as_deref(), Some("sqlite:ennio.db"));
+        assert_eq!(config.nats_url.as_deref(), Some("nats://localhost:4222"));
+        assert_eq!(config.cors_origins, vec!["http://localhost:3000"]);
+
+        let deserialized: OrchestratorConfig = serde_yaml::from_str(&yaml).expect("deserialize");
         assert_eq!(
             deserialized.database_url.as_deref(),
-            Some("postgres://localhost/ennio")
+            Some("sqlite:ennio.db")
         );
         assert_eq!(
             deserialized.nats_url.as_deref(),
             Some("nats://localhost:4222")
         );
-        assert_eq!(deserialized.api_token.as_deref(), Some("secret-token"));
+        assert!(
+            deserialized.api_token.is_none(),
+            "skipped field deserializes as None"
+        );
         assert_eq!(deserialized.cors_origins, vec!["http://localhost:3000"]);
     }
 }

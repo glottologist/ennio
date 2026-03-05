@@ -17,35 +17,49 @@ The token is compared using constant-time SHA-256 hashing.
 ### Health Check
 
 ```
-GET /health
+GET /api/v1/health
 ```
 
 Returns `200 OK` with no authentication required. Use for load balancer health checks.
+
+**Response:**
+
+```json
+{
+  "data": "ok"
+}
+```
 
 ---
 
 ### List Sessions
 
 ```
-GET /api/v1/sessions
+GET /api/v1/sessions[?project_id=<id>]
 ```
 
-Returns all active sessions.
+Returns all active sessions, optionally filtered by project.
+
+| Parameter | Location | Required | Description |
+|-----------|----------|----------|-------------|
+| `project_id` | query | No | Filter sessions by project ID |
 
 **Response:**
 
 ```json
-[
-  {
-    "id": "myapp-abc123",
-    "project": "my-app",
-    "status": "Working",
-    "activity": "Active",
-    "branch": "feat/auth",
-    "agent": "claude-code",
-    "created_at": "2026-03-04T10:00:00Z"
-  }
-]
+{
+  "data": [
+    {
+      "id": "myapp-abc123",
+      "project_id": "my-app",
+      "status": "Working",
+      "activity": "Active",
+      "branch": "feat/auth",
+      "pr_url": null,
+      "agent_name": "claude-code"
+    }
+  ]
+}
 ```
 
 ---
@@ -58,7 +72,21 @@ GET /api/v1/sessions/{id}
 
 Returns details for a specific session.
 
-**Response:** `200` with session object, or `404` if not found.
+**Response:** `200` with session object wrapped in `data`, or `404` if not found.
+
+```json
+{
+  "data": {
+    "id": "myapp-abc123",
+    "project_id": "my-app",
+    "status": "CiPassing",
+    "activity": "Idle",
+    "branch": "feat/auth",
+    "pr_url": "https://github.com/org/repo/pull/42",
+    "agent_name": "claude-code"
+  }
+}
+```
 
 ---
 
@@ -72,17 +100,25 @@ POST /api/v1/sessions
 
 ```json
 {
-  "project": "my-app",
-  "issue": "42",
+  "project_id": "my-app",
+  "issue_id": "42",
   "prompt": "Add input validation",
   "branch": "feat/validation",
   "role": "implementer"
 }
 ```
 
-All fields except `project` are optional. Provide either `issue` or `prompt`.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `project_id` | `String` | Yes | Project to spawn in |
+| `issue_id` | `String` | No | Issue ID to work on (fetched from tracker) |
+| `prompt` | `String` | No | Direct prompt for the agent |
+| `branch` | `String` | No | Git branch name to use |
+| `role` | `String` | No | Session role |
 
-**Response:** `201 Created` with the new session object.
+Provide either `issue_id` or `prompt` (or both).
+
+**Response:** `200` with the new session object wrapped in `data`.
 
 ---
 
@@ -94,7 +130,15 @@ DELETE /api/v1/sessions/{id}
 
 Terminates the agent and marks the session as `Killed`.
 
-**Response:** `200 OK` or `404` if not found.
+**Response:**
+
+```json
+{
+  "data": "killed"
+}
+```
+
+Returns `404` if session not found.
 
 ---
 
@@ -114,7 +158,38 @@ POST /api/v1/sessions/{id}/send
 
 Sends text input to the running agent via the runtime plugin.
 
-**Response:** `200 OK` or `404` if session not found.
+**Response:**
+
+```json
+{
+  "data": "sent"
+}
+```
+
+Returns `404` if session not found.
+
+## Error Responses
+
+All errors return a JSON body:
+
+```json
+{
+  "error": "Session not found",
+  "code": 404
+}
+```
+
+### HTTP Status Code Mapping
+
+| Status | Trigger |
+|--------|---------|
+| `200` | Success |
+| `400` | Invalid ID, configuration errors |
+| `402` | Budget exceeded |
+| `404` | Entity not found |
+| `409` | Entity already exists |
+| `504` | Operation timed out |
+| `500` | Internal server error |
 
 ## CORS
 
@@ -126,4 +201,4 @@ cors_origins:
   - https://dashboard.example.com
 ```
 
-If no origins are configured, CORS headers are not sent.
+Allowed methods: `GET`, `POST`, `DELETE`. If no origins are configured, CORS headers are not sent.

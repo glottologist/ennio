@@ -14,18 +14,23 @@ Ennio sends notifications when reactions fire or sessions need attention.
 
 ### Defining Notifiers
 
+Each notifier specifies a `plugin` name, a unique `name` for routing, and a `config` map with plugin-specific settings:
+
 ```yaml
 notifiers:
-  - name: team-slack
-    provider: slack
-    webhook_url: ${SLACK_WEBHOOK_URL}
+  - plugin: slack
+    name: team-slack
+    config:
+      webhook_url: ${SLACK_WEBHOOK_URL}
 
-  - name: ops-alerts
-    provider: webhook
-    url: https://hooks.example.com/ennio
+  - plugin: webhook
+    name: ops-alerts
+    config:
+      url: https://hooks.example.com/ennio
 
-  - name: local
-    provider: desktop
+  - plugin: desktop
+    name: local
+    config: {}
 ```
 
 ### Default Notifiers

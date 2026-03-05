@@ -9,7 +9,7 @@ Complete reference for `ennio.yaml`. All fields listed with types, defaults, and
 | `port` | `u16` | `3000` | Web API listen port |
 | `terminal_port` | `u16` | `3001` | Terminal WebSocket port |
 | `direct_terminal_port` | `u16?` | — | Direct terminal access port |
-| `ready_threshold` | `Duration` | `2s` | Time before a session is considered ready |
+| `ready_threshold` | `Duration` | `2s` | Time before a session is considered ready (milliseconds in YAML) |
 | `defaults` | `DefaultPlugins` | see below | Global plugin defaults |
 | `projects` | `[ProjectConfig]` | `[]` | List of project configurations |
 | `notifiers` | `[NotifierConfig]` | `[]` | Notification channel definitions |
@@ -56,52 +56,105 @@ Complete reference for `ennio.yaml`. All fields listed with types, defaults, and
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `provider` | `String` | `"github"` or `"linear"` |
-| `owner` | `String` | Repository/organization owner |
-| `repo` | `String` | Repository name |
-| `token` | `SecretString` | API token |
+| `plugin` | `String` | Plugin name: `"github"` or `"linear"` |
+| `config` | `Map<String, Value>` | Plugin-specific configuration (e.g., `owner`, `repo`, `token`) |
+
+```yaml
+tracker_config:
+  plugin: github
+  config:
+    owner: my-org
+    repo: my-repo
+    token: ${GITHUB_TOKEN}
+```
 
 ## ScmConfig
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `provider` | `String` | `"github"` |
-| `owner` | `String` | Repository owner |
-| `repo` | `String` | Repository name |
-| `token` | `SecretString` | API token |
+| `plugin` | `String` | Plugin name: `"github"` |
+| `config` | `Map<String, Value>` | Plugin-specific configuration (e.g., `owner`, `repo`, `token`) |
+
+```yaml
+scm_config:
+  plugin: github
+  config:
+    owner: my-org
+    repo: my-repo
+    token: ${GITHUB_TOKEN}
+```
 
 ## NotifierConfig
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | `String` | Unique notifier identifier |
-| `provider` | `String` | `"desktop"`, `"slack"`, or `"webhook"` |
-| `webhook_url` | `String?` | Slack webhook URL (slack provider) |
-| `url` | `String?` | Webhook URL (webhook provider) |
+| `plugin` | `String` | Plugin name: `"desktop"`, `"slack"`, or `"webhook"` |
+| `name` | `String` | Unique notifier identifier (used in routing rules) |
+| `config` | `Map<String, Value>` | Plugin-specific configuration |
+
+```yaml
+notifiers:
+  - plugin: slack
+    name: team-slack
+    config:
+      webhook_url: ${SLACK_WEBHOOK_URL}
+
+  - plugin: webhook
+    name: ops-alerts
+    config:
+      url: https://hooks.example.com/ennio
+
+  - plugin: desktop
+    name: local
+    config: {}
+```
 
 ## ReactionConfig
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `action` | `ReactionAction` | **required** | `send_to_agent`, `notify`, or `auto_merge` |
+| `enabled` | `bool` | `true` | Whether this reaction is active |
+| `action` | `ReactionAction` | `"notify"` | `send_to_agent`, `notify`, or `auto_merge` |
 | `message` | `String?` | — | Message to send (for `send_to_agent`) |
-| `max_retries` | `u32?` | — | Maximum retry attempts |
-| `escalation_timeout` | `u64?` | — | Seconds before escalating |
-| `priority` | `EventPriority?` | — | Notification priority |
+| `priority` | `EventPriority` | `"info"` | Notification priority level |
+| `escalate_after` | `Duration?` | — | Seconds before escalating to notification |
+| `threshold` | `Duration?` | — | Time threshold before reaction triggers (e.g., idle detection) |
+| `retries` | `u32` | `0` | Maximum retry attempts |
+| `include_summary` | `bool` | `false` | Include session summary in notification |
+
+```yaml
+reactions:
+  ci-failed:
+    enabled: true
+    action: send_to_agent
+    message: "CI failed. Check the logs and fix the issues."
+    priority: action
+    retries: 3
+    escalate_after: 180
+```
 
 ## AgentSpecificConfig
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `permissions` | `String?` | Permission mode for the agent (e.g., agent-specific flags) |
 | `model` | `String?` | Model to use (e.g., `"opus"`, `"sonnet"`) |
-| `max_turns` | `u32?` | Maximum conversation turns |
+| `passthrough` | `Map<String, Value>` | Additional key-value pairs passed through to the agent |
+
+```yaml
+agent_config:
+  model: opus
+  permissions: "--dangerously-skip-permissions"
+  passthrough:
+    max_turns: 200
+```
 
 ## SymlinkConfig
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `source` | `String` | Source path (relative to repo root) |
-| `target` | `String` | Target path in workspace |
+| `source` | `PathBuf` | Source path (absolute or relative) |
+| `target` | `PathBuf` | Target path in workspace |
 
 ## SshConnectionConfig
 
@@ -111,14 +164,16 @@ Complete reference for `ennio.yaml`. All fields listed with types, defaults, and
 | `port` | `u16` | `22` | SSH port |
 | `username` | `String` | **required** | SSH username |
 | `auth` | `SshAuthConfig` | **required** | Authentication method |
-| `strategy` | `SshStrategyConfig` | **required** | Remote execution strategy |
-| `connection_timeout` | `Duration` | `30s` | SSH connection timeout |
-| `keepalive_interval` | `Duration?` | — | SSH keepalive interval |
-| `host_key_policy` | `HostKeyPolicyConfig` | `accept_new` | Host key verification policy |
+| `strategy` | `SshStrategyConfig` | `tmux` | Remote execution strategy |
+| `connection_timeout` | `Duration` | `30s` | SSH connection timeout (seconds in YAML) |
+| `keepalive_interval` | `Duration?` | — | SSH keepalive interval (seconds in YAML) |
+| `host_key_policy` | `HostKeyPolicyConfig` | `strict` | Host key verification policy |
 | `known_hosts_path` | `PathBuf?` | — | Path to known_hosts file |
 | `node_config` | `NodeConnectionConfig?` | — | Remote node daemon config |
 
 ### SshAuthConfig Variants
+
+Discriminated by the `type` field.
 
 **Key authentication:**
 ```yaml
@@ -141,20 +196,29 @@ auth:
   password: ${SSH_PASSWORD}
 ```
 
+### SshStrategyConfig
+
+| Value | Description |
+|-------|-------------|
+| `tmux` | Create a tmux session on the remote host (default) |
+| `tmate` | Create a tmate session for shared terminal access |
+| `remote_control` | Use agent's remote control protocol |
+| `node` | Deploy and communicate via gRPC `ennio-node` daemon |
+
 ### HostKeyPolicyConfig
 
 | Value | Description |
 |-------|-------------|
-| `strict` | Reject unknown or changed host keys |
-| `accept_new` | Accept unknown keys, reject changed keys (default) |
-| `accept_all` | Accept any key (insecure) |
+| `strict` | Reject unknown or changed host keys (default) |
+| `accept_new` | Accept unknown keys, reject changed keys |
+| `accept_all` | Accept any key (insecure, for testing only) |
 
 ## NodeConnectionConfig
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `port` | `u16` | `9100` | gRPC listen port on remote host |
-| `idle_timeout` | `Duration` | `3600s` | Auto-shutdown after idle |
+| `idle_timeout` | `Duration` | `3600s` | Auto-shutdown after idle (seconds in YAML) |
 | `workspace_root` | `PathBuf?` | — | Root directory for workspaces |
 | `ennio_binary_path` | `PathBuf?` | — | Path to `ennio-node` binary on remote |
 | `auth_token` | `SecretString?` | — | Bearer token for gRPC auth |
@@ -175,24 +239,27 @@ defaults:
   agent: claude-code
   workspace: worktree
   notifiers:
-    - desktop
+    - local
 
 notifiers:
-  - name: desktop
-    provider: desktop
-  - name: team-slack
-    provider: slack
-    webhook_url: ${SLACK_WEBHOOK}
+  - plugin: desktop
+    name: local
+    config: {}
+  - plugin: slack
+    name: team-slack
+    config:
+      webhook_url: ${SLACK_WEBHOOK}
 
 notification_routing:
   agent-exited:
     - team-slack
-    - desktop
+    - local
   all-complete:
-    - desktop
+    - local
 
 reactions:
   approved-and-green:
+    enabled: true
     action: auto_merge
 
 projects:
@@ -203,15 +270,17 @@ projects:
     max_sessions: 3
     session_prefix: be
     tracker_config:
-      provider: github
-      owner: org
-      repo: backend
-      token: ${GITHUB_TOKEN}
+      plugin: github
+      config:
+        owner: org
+        repo: backend
+        token: ${GITHUB_TOKEN}
     scm_config:
-      provider: github
-      owner: org
-      repo: backend
-      token: ${GITHUB_TOKEN}
+      plugin: github
+      config:
+        owner: org
+        repo: backend
+        token: ${GITHUB_TOKEN}
     symlinks:
       - source: ../.env
         target: .env
@@ -219,7 +288,8 @@ projects:
       - cargo build
     agent_config:
       model: opus
-      max_turns: 200
+      passthrough:
+        max_turns: 200
     agent_rules:
       - "Write tests for all new code"
       - "Use conventional commits"
@@ -235,6 +305,7 @@ projects:
         type: key
         path: ~/.ssh/id_ed25519
       strategy: node
+      host_key_policy: accept_new
       node_config:
         port: 9100
         workspace_root: /home/gpu-user/workspaces

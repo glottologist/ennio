@@ -99,11 +99,19 @@ projects:
   - name: my-app
     agent_config:
       model: opus
-      max_turns: 200
+      permissions: "--dangerously-skip-permissions"
+      passthrough:
+        max_turns: 200
     agent_rules:
       - "Always write tests for new code"
       - "Use conventional commits"
       - "Never modify the database schema without a migration"
 ```
+
+| Field | Description |
+|-------|-------------|
+| `model` | Model to use (e.g., `opus`, `sonnet`) |
+| `permissions` | Permission mode for the agent |
+| `passthrough` | Additional key-value pairs passed through to the agent |
 
 `agent_rules` are passed to the agent as system instructions alongside the task prompt.

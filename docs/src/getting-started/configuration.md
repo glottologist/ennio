@@ -22,7 +22,9 @@ api_token: ${ENNIO_API_TOKEN}
 projects:
   - name: app
     tracker_config:
-      token: ${GITHUB_TOKEN}
+      plugin: github
+      config:
+        token: ${GITHUB_TOKEN}
 ```
 
 ## Config Discovery

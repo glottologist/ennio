@@ -25,7 +25,7 @@ Ennio does the same with AI coding agents. It spawns multiple agents across repo
 
 ## Architecture at a Glance
 
-Ennio is a Rust workspace with 15 crates:
+Ennio is a Rust workspace with 16 crates:
 
 ```
 ennio-cli          CLI binary (clap)
@@ -43,4 +43,5 @@ ennio-nats         NATS messaging
 ennio-ledger       Cost tracking and budgets
 ennio-ml           ML trait interfaces
 ennio-observe      OpenTelemetry integration
+ennio-doc          Documentation crate
 ```

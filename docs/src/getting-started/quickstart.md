@@ -23,15 +23,17 @@ projects:
     path: /home/user/repos/my-app
     default_branch: main
     tracker_config:
-      provider: github
-      owner: user
-      repo: my-app
-      token: ${GITHUB_TOKEN}
+      plugin: github
+      config:
+        owner: user
+        repo: my-app
+        token: ${GITHUB_TOKEN}
     scm_config:
-      provider: github
-      owner: user
-      repo: my-app
-      token: ${GITHUB_TOKEN}
+      plugin: github
+      config:
+        owner: user
+        repo: my-app
+        token: ${GITHUB_TOKEN}
 ```
 
 > **Note:** Environment variables in `${VAR}` syntax are expanded at load time.

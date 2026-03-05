@@ -42,29 +42,47 @@ Override reactions globally or per-project:
 # Global reactions
 reactions:
   ci-failed:
+    enabled: true
     action: send_to_agent
     message: "CI failed. Check the logs and fix the issues."
-    max_retries: 3
-    escalation_timeout: 180
+    priority: action
+    retries: 3
+    escalate_after: 180
 
   approved-and-green:
+    enabled: true
     action: auto_merge   # auto-merge instead of just notifying
 
 projects:
   - name: critical-app
     reactions:
       ci-failed:
+        enabled: true
         action: send_to_agent
         message: "CI is red. This is a critical service — fix immediately."
-        max_retries: 5
-        escalation_timeout: 60
+        priority: urgent
+        retries: 5
+        escalate_after: 60
 ```
 
 Project-level reactions override global reactions for matching keys.
 
+### Reaction Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `bool` | `true` | Whether this reaction is active |
+| `action` | `ReactionAction` | `"notify"` | What to do when triggered |
+| `message` | `String?` | — | Message sent to agent (for `send_to_agent`) |
+| `priority` | `EventPriority` | `"info"` | Priority of emitted events |
+| `retries` | `u32` | `0` | Maximum retry attempts |
+| `escalate_after` | `Duration?` | — | Seconds before escalating |
+| `threshold` | `Duration?` | — | Idle time before triggering (e.g., `agent-stuck`) |
+| `include_summary` | `bool` | `false` | Include session summary in notification |
+
 ## Escalation
 
-When a reaction's `escalation_timeout` expires and the state hasn't changed, Ennio escalates by sending a notification regardless of the original action. This ensures a human is alerted when automated recovery fails.
+When a reaction's `escalate_after` timeout expires and the state hasn't changed, Ennio escalates by sending a notification regardless of the original action. This ensures a human is alerted when automated recovery fails.
 
 ## Event Priority
 

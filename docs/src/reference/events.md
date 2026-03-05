@@ -107,7 +107,7 @@ Priorities are ordered: `Info < Action < Urgent < Critical`.
 Tokio broadcast channel with capacity 1024. Subscribers receive events in real-time. Used by the lifecycle manager, web API (SSE), and internal consumers.
 
 ```rust
-let rx = event_bus.subscribe();
+let rx = event_bus.subscribe(EventType::CiFailing);
 while let Ok(event) = rx.recv().await {
     // handle event
 }
@@ -115,16 +115,29 @@ while let Ok(event) = rx.recv().await {
 
 ### NATS (Distributed)
 
-Events are published to NATS topics following a hierarchy:
+Events are published to category-based NATS topics. Each event type maps to a topic category:
 
-```
-ennio.events.{project_id}.{session_id}.{event_type}
-```
+| Category | Topic Format | Event Types |
+|----------|-------------|-------------|
+| Sessions | `ennio.sessions.{project_id}.{action}` | Spawned, Working, Exited, Killed, Restored, Cleaned, StatusChanged, ActivityChanged |
+| Pull Requests | `ennio.pr.{project_id}.{action}` | PrCreated, PrUpdated, PrMerged, PrClosed |
+| CI | `ennio.ci.{project_id}.{action}` | CiPassing, CiFailing, CiFixSent, CiFixFailed |
+| Reviews | `ennio.review.{project_id}.{action}` | ReviewPending, ReviewApproved, ReviewChangesRequested, ReviewCommentsSent |
+| Merge | `ennio.merge.{project_id}.{action}` | MergeReady, MergeConflicts, MergeCompleted |
+| Reactions | `ennio.reactions.{project_id}.{action}` | ReactionTriggered, ReactionEscalated |
+| Lifecycle | `ennio.lifecycle.{action}` | AllComplete |
+| Nodes | `ennio.node.{host}.{action}` | NodeConnected, NodeDisconnected, NodeLaunched, NodeHealthCheck |
+| Commands | `ennio.commands.{command}` | Shutdown and other control commands |
+| Metrics | `ennio.metrics.{action}` | Metric collection events |
+| Dashboard | `ennio.dashboard.{action}` | Dashboard update events |
 
 External systems can subscribe to patterns:
-- `ennio.events.>` — all events
-- `ennio.events.my-project.>` — all events for a project
-- `ennio.events.*.*.ci_failing` — all CI failure events
+- `ennio.sessions.my-project.*` — all session events for a project
+- `ennio.ci.my-project.*` — all CI events for a project
+- `ennio.node.build-server.*` — all events from a remote node
+- `ennio.lifecycle.*` — all lifecycle events
+
+Topic segments are validated: alphanumeric, underscore, and hyphen characters only. No spaces or dots within segments.
 
 ### SQLite (Persistent)
 

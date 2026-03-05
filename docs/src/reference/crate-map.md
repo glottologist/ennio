@@ -1,6 +1,6 @@
 # Crate Map
 
-Ennio is a Rust workspace with 15 crates. This page describes each crate's purpose, dependencies, and public API surface.
+Ennio is a Rust workspace with 16 crates. This page describes each crate's purpose, dependencies, and public API surface.
 
 ## Dependency Graph
 
@@ -22,6 +22,7 @@ ennio-node ──► ennio-proto ──► ennio-core
 ennio-dashboard (standalone WASM, no workspace deps)
 ennio-ledger ──► (standalone, rust_decimal)
 ennio-ml ──► ennio-core
+ennio-doc (documentation only)
 ```
 
 ## Crate Details
@@ -150,3 +151,10 @@ OpenTelemetry integration.
 - Tracing subscriber setup
 - OTLP exporter configuration
 - Prometheus metrics endpoint
+
+### `ennio-doc`
+
+Documentation crate.
+
+- mdBook documentation source
+- Build and generation tooling

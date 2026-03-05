@@ -82,9 +82,7 @@ fn load_orchestrator_config(config_path: Option<&str>) -> Result<OrchestratorCon
 }
 
 async fn connect_db(config: &OrchestratorConfig) -> Result<SqlitePool> {
-    let database_url = config
-        .resolve_database_url()
-        .context("DATABASE_URL not set (set env var or database_url in config)")?;
+    let database_url = config.resolve_database_url();
 
     let pool = ennio_db::pool::connect(&database_url)
         .await

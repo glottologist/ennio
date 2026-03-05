@@ -63,17 +63,19 @@ impl Default for OrchestratorConfig {
 }
 
 const DEFAULT_NATS_URL: &str = "nats://127.0.0.1:4222";
+const DEFAULT_DATABASE_URL: &str = "sqlite:ennio.db";
 
 impl OrchestratorConfig {
     pub fn expose_api_token(&self) -> Option<&str> {
         self.api_token.as_ref().map(|s| s.expose_secret())
     }
 
-    pub fn resolve_database_url(&self) -> Option<String> {
+    pub fn resolve_database_url(&self) -> String {
         self.database_url
             .as_deref()
             .map(str::to_owned)
             .or_else(|| std::env::var("DATABASE_URL").ok())
+            .unwrap_or_else(|| DEFAULT_DATABASE_URL.to_owned())
     }
 
     pub fn resolve_nats_url(&self) -> String {
@@ -865,13 +867,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case(Some("sqlite:ennio.db"), None, Some("sqlite:ennio.db"))]
-    #[case(None, Some("sqlite:env-ennio.db"), Some("sqlite:env-ennio.db"))]
-    #[case(None, None, None)]
+    #[case(Some("sqlite:ennio.db"), None, "sqlite:ennio.db")]
+    #[case(None, Some("sqlite:env-ennio.db"), "sqlite:env-ennio.db")]
+    #[case(None, None, "sqlite:ennio.db")]
     fn resolve_database_url_precedence(
         #[case] config_val: Option<&str>,
         #[case] env_val: Option<&str>,
-        #[case] expected: Option<&str>,
+        #[case] expected: &str,
     ) {
         let config = OrchestratorConfig {
             database_url: config_val.map(str::to_owned),
@@ -879,8 +881,7 @@ mod tests {
         };
 
         temp_env::with_var("DATABASE_URL", env_val, || {
-            let result = config.resolve_database_url();
-            assert_eq!(result.as_deref(), expected);
+            assert_eq!(config.resolve_database_url(), expected);
         });
     }
 

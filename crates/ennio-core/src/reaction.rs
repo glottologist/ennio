@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 use crate::event::EventPriority;
+use crate::serde_helpers::option_duration_secs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString)]
 #[strum(serialize_all = "snake_case")]
@@ -29,11 +30,11 @@ pub struct ReactionConfig {
     pub message: Option<String>,
     pub priority: EventPriority,
     #[serde(default)]
-    #[serde(with = "optional_duration_secs")]
+    #[serde(with = "option_duration_secs")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub escalate_after: Option<Duration>,
     #[serde(default)]
-    #[serde(with = "optional_duration_secs")]
+    #[serde(with = "option_duration_secs")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold: Option<Duration>,
     #[serde(default)]
@@ -63,28 +64,4 @@ pub struct ReactionResult {
     pub action_taken: ReactionAction,
     pub message: String,
     pub escalated: bool,
-}
-
-mod optional_duration_secs {
-    use std::time::Duration;
-
-    use serde::{self, Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(value: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match value {
-            Some(d) => serializer.serialize_some(&d.as_secs()),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let opt: Option<u64> = Option::deserialize(deserializer)?;
-        Ok(opt.map(Duration::from_secs))
-    }
 }

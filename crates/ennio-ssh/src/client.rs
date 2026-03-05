@@ -5,6 +5,7 @@ use ennio_core::config::{HostKeyPolicyConfig, SshAuthConfig, SshConnectionConfig
 use russh::keys::ssh_key;
 use secrecy::ExposeSecret;
 use tokio::sync::Mutex;
+use zeroize::Zeroizing;
 
 use crate::error::SshError;
 
@@ -312,12 +313,15 @@ async fn load_key(
     path: &std::path::Path,
     passphrase: Option<&str>,
 ) -> Result<ssh_key::PrivateKey, SshError> {
-    let key_data = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| SshError::KeyLoad {
-            path: path.to_path_buf(),
-            message: e.to_string(),
-        })?;
+    let key_data =
+        Zeroizing::new(
+            tokio::fs::read_to_string(path)
+                .await
+                .map_err(|e| SshError::KeyLoad {
+                    path: path.to_path_buf(),
+                    message: e.to_string(),
+                })?,
+        );
 
     match passphrase {
         Some(phrase) => ssh_key::PrivateKey::from_openssh(key_data.as_bytes())

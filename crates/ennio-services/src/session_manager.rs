@@ -13,8 +13,8 @@ use ennio_core::config::{
     OrchestratorConfig, ProjectConfig, SshConnectionConfig, SshStrategyConfig,
 };
 use ennio_core::error::EnnioError;
-use ennio_core::event::{EventPriority, EventType, OrchestratorEvent};
-use ennio_core::id::{EventId, ProjectId, SessionId};
+use ennio_core::event::{EventPriority, EventType};
+use ennio_core::id::{ProjectId, SessionId};
 use ennio_core::lifecycle::{CleanupDetail, CleanupResult, SessionManager, SpawnRequest};
 use ennio_core::paths;
 use ennio_core::runtime::{Runtime, RuntimeCreateConfig, RuntimeHandle};
@@ -57,14 +57,7 @@ impl DefaultSessionManager {
     }
 
     fn find_project(&self, project_id: &ProjectId) -> Result<&ProjectConfig, EnnioError> {
-        self.config
-            .projects
-            .iter()
-            .find(|p| p.project_id.as_ref().is_some_and(|id| id == project_id))
-            .ok_or_else(|| EnnioError::NotFound {
-                entity: "project".to_owned(),
-                id: project_id.to_string(),
-            })
+        self.config.find_project(project_id)
     }
 
     fn resolve_runtime_name<'a>(&'a self, project: &'a ProjectConfig) -> &'a str {
@@ -112,28 +105,12 @@ impl DefaultSessionManager {
         project_id: &ProjectId,
         message: &str,
     ) {
-        let event = OrchestratorEvent {
-            id: EventId::random(),
-            event_type,
-            priority,
-            // clone: SessionId must be owned by the event struct, caller retains its reference
-            session_id: session_id.clone(),
-            // clone: ProjectId must be owned by the event struct, caller retains its reference
-            project_id: project_id.clone(),
-            timestamp: Utc::now(),
-            message: message.to_owned(),
-            data: serde_json::Value::Null,
+        let ctx = crate::events::EventContext {
+            event_bus: &self.event_bus,
+            pool: &self.pool,
+            publisher: &self.publisher,
         };
-
-        self.event_bus.publish(&event);
-
-        // clone: Arc reference count increment for async task ownership
-        let publisher = Arc::clone(&self.publisher);
-        // clone: SqlitePool uses Arc internally, this is a cheap reference count increment
-        let pool = self.pool.clone();
-        tokio::spawn(async move {
-            crate::events::emit_event(&pool, &publisher, event).await;
-        });
+        crate::events::fire_event(&ctx, event_type, priority, session_id, project_id, message);
     }
 
     fn is_node_strategy(ssh_config: &SshConnectionConfig) -> bool {
@@ -458,6 +435,133 @@ impl DefaultSessionManager {
 
         Ok(())
     }
+
+    async fn should_cleanup(
+        &self,
+        session: &Session,
+        project_id: &ProjectId,
+    ) -> Result<bool, EnnioError> {
+        match session.status {
+            SessionStatus::Merged | SessionStatus::Done => Ok(true),
+            _ => {
+                let Some(issue_id) = session.issue_id.as_deref() else {
+                    return Ok(false);
+                };
+                let project = self.find_project(project_id)?;
+                let Some(tracker_config) = &project.tracker_config else {
+                    return Ok(false);
+                };
+                let tracker = self.registry.get_tracker(&tracker_config.plugin)?;
+                let issue = tracker.get_issue(project_id, issue_id).await?;
+                Ok(tracker.is_completed(&issue).await.unwrap_or(false))
+            }
+        }
+    }
+
+    async fn cleanup_session(&self, session: &Session, project_id: &ProjectId) -> CleanupDetail {
+        match self.kill(&session.id).await {
+            Ok(()) => {
+                self.emit_event(
+                    EventType::SessionCleaned,
+                    EventPriority::Info,
+                    &session.id,
+                    project_id,
+                    "session cleaned up",
+                );
+                CleanupDetail {
+                    // clone: SessionId must be owned by CleanupDetail
+                    session_id: session.id.clone(),
+                    success: true,
+                    reason: "issue completed or PR merged".to_owned(),
+                }
+            }
+            Err(e) => {
+                warn!(
+                    session_id = %session.id,
+                    error = %e,
+                    "cleanup failed for session"
+                );
+                CleanupDetail {
+                    // clone: SessionId must be owned by CleanupDetail
+                    session_id: session.id.clone(),
+                    success: false,
+                    reason: e.to_string(),
+                }
+            }
+        }
+    }
+
+    async fn restore_workspace(
+        &self,
+        session: &Session,
+        project: &ProjectConfig,
+        session_id: &SessionId,
+    ) -> Result<(), EnnioError> {
+        let Some(ref ws_path) = session.workspace_path else {
+            return Ok(());
+        };
+
+        let ws_config = WorkspaceCreateConfig {
+            project_id: &session.project_id,
+            project,
+            session_id,
+            branch: session.branch.as_deref(),
+        };
+
+        if let Some(ssh_config) = &project.ssh_config {
+            let (client, _strategy) = Self::build_ssh_client(ssh_config).await?;
+            let workspace_name = self.resolve_workspace_name(project);
+            let remote_ws = Self::build_remote_workspace(&client, project, workspace_name)?;
+            remote_ws.restore(ws_path, &ws_config).await?;
+        } else {
+            let workspace_name = self.resolve_workspace_name(project);
+            let workspace_plugin = self.registry.get_workspace(workspace_name)?;
+            workspace_plugin.restore(ws_path, &ws_config).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn restore_runtime(
+        &self,
+        session: &Session,
+        project: &ProjectConfig,
+        session_id: &SessionId,
+    ) -> Result<RuntimeHandle, EnnioError> {
+        let agent_name = self.resolve_agent_name(project);
+        let agent_plugin = self.registry.get_agent(agent_name)?;
+
+        let restore_command = agent_plugin.get_restore_command(session, project).await?;
+
+        let cwd = session
+            .workspace_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        let runtime_config = RuntimeCreateConfig {
+            // clone: SessionId must be owned by RuntimeCreateConfig
+            session_id: session_id.clone(),
+            launch_command: restore_command.unwrap_or_default(),
+            env: HashMap::new(),
+            cwd,
+            session_name: session
+                .tmux_name
+                // clone: tmux_name must be owned by RuntimeCreateConfig
+                .clone()
+                .unwrap_or_else(|| session_id.to_string()),
+        };
+
+        if let Some(ssh_config) = &project.ssh_config {
+            let (client, strategy) = Self::build_ssh_client(ssh_config).await?;
+            let ssh_runtime = SshRuntime::new(client, strategy);
+            Ok(ssh_runtime.create(&runtime_config).await?)
+        } else {
+            let runtime_name = self.resolve_runtime_name(project);
+            let runtime_plugin = self.registry.get_runtime(runtime_name)?;
+            Ok(runtime_plugin.create(&runtime_config).await?)
+        }
+    }
 }
 
 #[async_trait]
@@ -495,7 +599,7 @@ impl SessionManager for DefaultSessionManager {
         if project.is_remote() {
             warn!("skipping workspace hooks for remote project — hooks write local files");
         } else {
-            let data_dir = paths::data_dir(&config_hash, request.project_id.as_str());
+            let data_dir = paths::data_dir(&config_hash, request.project_id.as_str())?;
             let hooks_config = WorkspaceHooksConfig {
                 session_id: &session_id,
                 data_dir: &data_dir,
@@ -564,15 +668,7 @@ impl SessionManager for DefaultSessionManager {
     }
 
     async fn restore(&self, session_id: &SessionId) -> Result<Session, EnnioError> {
-        let session = sessions::get(&self.pool, session_id)
-            .await
-            .map_err(|e| EnnioError::Database {
-                message: e.to_string(),
-            })?
-            .ok_or_else(|| EnnioError::NotFound {
-                entity: "session".to_owned(),
-                id: session_id.to_string(),
-            })?;
+        let session = self.get(session_id).await?;
 
         if !session.status.is_restorable() {
             return Err(EnnioError::Session {
@@ -584,59 +680,10 @@ impl SessionManager for DefaultSessionManager {
 
         let project = self.find_project(&session.project_id)?;
 
-        if let Some(ref ws_path) = session.workspace_path {
-            let ws_config = WorkspaceCreateConfig {
-                project_id: &session.project_id,
-                project,
-                session_id,
-                branch: session.branch.as_deref(),
-            };
+        self.restore_workspace(&session, project, session_id)
+            .await?;
 
-            if let Some(ssh_config) = &project.ssh_config {
-                let (client, _strategy) = Self::build_ssh_client(ssh_config).await?;
-                let workspace_name = self.resolve_workspace_name(project);
-                let remote_ws = Self::build_remote_workspace(&client, project, workspace_name)?;
-                remote_ws.restore(ws_path, &ws_config).await?;
-            } else {
-                let workspace_name = self.resolve_workspace_name(project);
-                let workspace_plugin = self.registry.get_workspace(workspace_name)?;
-                workspace_plugin.restore(ws_path, &ws_config).await?;
-            }
-        }
-
-        let agent_name = self.resolve_agent_name(project);
-        let agent_plugin = self.registry.get_agent(agent_name)?;
-
-        let restore_command = agent_plugin.get_restore_command(&session, project).await?;
-
-        let cwd = session
-            .workspace_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default();
-
-        let runtime_config = RuntimeCreateConfig {
-            // clone: SessionId must be owned by RuntimeCreateConfig
-            session_id: session_id.clone(),
-            launch_command: restore_command.unwrap_or_default(),
-            env: HashMap::new(),
-            cwd,
-            session_name: session
-                .tmux_name
-                // clone: tmux_name must be owned by RuntimeCreateConfig
-                .clone()
-                .unwrap_or_else(|| session_id.to_string()),
-        };
-
-        let runtime_handle = if let Some(ssh_config) = &project.ssh_config {
-            let (client, strategy) = Self::build_ssh_client(ssh_config).await?;
-            let ssh_runtime = SshRuntime::new(client, strategy);
-            ssh_runtime.create(&runtime_config).await?
-        } else {
-            let runtime_name = self.resolve_runtime_name(project);
-            let runtime_plugin = self.registry.get_runtime(runtime_name)?;
-            runtime_plugin.create(&runtime_config).await?
-        };
+        let runtime_handle = self.restore_runtime(&session, project, session_id).await?;
 
         sessions::update_status(&self.pool, session_id, SessionStatus::Working)
             .await
@@ -728,61 +775,16 @@ impl SessionManager for DefaultSessionManager {
                 continue;
             }
 
-            let should_clean = match session.status {
-                SessionStatus::Merged | SessionStatus::Done => true,
-                _ => {
-                    if let Some(issue_id) = session.issue_id.as_deref() {
-                        let project = self.find_project(project_id)?;
-                        if let Some(tracker_config) = &project.tracker_config {
-                            let tracker = self.registry.get_tracker(&tracker_config.plugin)?;
-                            let issue = tracker.get_issue(project_id, issue_id).await?;
-                            tracker.is_completed(&issue).await.unwrap_or(false)
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                }
-            };
-
-            if !should_clean {
+            if !self.should_cleanup(session, project_id).await? {
                 continue;
             }
 
-            match self.kill(&session.id).await {
-                Ok(()) => {
-                    sessions_cleaned = sessions_cleaned.saturating_add(1);
-                    details.push(CleanupDetail {
-                        // clone: SessionId must be owned by CleanupDetail
-                        session_id: session.id.clone(),
-                        success: true,
-                        reason: "issue completed or PR merged".to_owned(),
-                    });
-
-                    self.emit_event(
-                        EventType::SessionCleaned,
-                        EventPriority::Info,
-                        &session.id,
-                        project_id,
-                        "session cleaned up",
-                    );
-                }
-                Err(e) => {
-                    sessions_failed = sessions_failed.saturating_add(1);
-                    details.push(CleanupDetail {
-                        // clone: SessionId must be owned by CleanupDetail
-                        session_id: session.id.clone(),
-                        success: false,
-                        reason: e.to_string(),
-                    });
-                    warn!(
-                        session_id = %session.id,
-                        error = %e,
-                        "cleanup failed for session"
-                    );
-                }
+            let detail = self.cleanup_session(session, project_id).await;
+            match detail.success {
+                true => sessions_cleaned = sessions_cleaned.saturating_add(1),
+                false => sessions_failed = sessions_failed.saturating_add(1),
             }
+            details.push(detail);
         }
 
         info!(

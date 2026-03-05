@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, warn};
 
 use ennio_core::config::OrchestratorConfig;
 use ennio_core::id::{ProjectId, SessionId};
@@ -95,12 +95,26 @@ async fn connect_db(config: &OrchestratorConfig) -> Result<SqlitePool> {
     Ok(pool)
 }
 
-async fn connect_nats(config: &OrchestratorConfig) -> Result<NatsClient> {
-    let nats_url = config.resolve_nats_url();
+async fn try_connect_nats(config: &OrchestratorConfig) -> Option<NatsClient> {
+    if !config.nats_configured() {
+        return None;
+    }
 
-    NatsClient::connect(&nats_url)
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to connect to NATS at {nats_url}: {e}"))
+    let nats_url = config.resolve_nats_url();
+    match NatsClient::connect(&nats_url).await {
+        Ok(client) => Some(client),
+        Err(e) => {
+            warn!("failed to connect to NATS at {nats_url}: {e}");
+            None
+        }
+    }
+}
+
+fn make_publisher(nats_client: Option<NatsClient>) -> Arc<EventPublisher> {
+    match nats_client {
+        Some(client) => Arc::new(EventPublisher::new(client)),
+        None => Arc::new(EventPublisher::without_nats()),
+    }
 }
 
 struct ReadonlyBootstrap {
@@ -120,8 +134,8 @@ struct FullBootstrap {
 async fn bootstrap_full(config_path: Option<&str>) -> Result<FullBootstrap> {
     let config = load_orchestrator_config(config_path)?;
     let pool = connect_db(&config).await?;
-    let nats_client = connect_nats(&config).await?;
-    let publisher = Arc::new(EventPublisher::new(nats_client));
+    let nats_client = try_connect_nats(&config).await;
+    let publisher = make_publisher(nats_client);
     let config = Arc::new(config);
 
     let registry = register_default_plugins(&config)
@@ -161,12 +175,23 @@ pub async fn init(path: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn start(config_path: Option<&str>) -> Result<()> {
+struct ServerBootstrap {
+    config: Arc<OrchestratorConfig>,
+    session_manager: Arc<dyn SessionManager>,
+    lifecycle_manager: Arc<DefaultLifecycleManager>,
+    nats_client: Option<NatsClient>,
+}
+
+async fn bootstrap_server(config_path: Option<&str>) -> Result<ServerBootstrap> {
     let config = load_orchestrator_config(config_path)?;
     let pool = connect_db(&config).await?;
-    let nats_client = connect_nats(&config).await?;
-    let publisher = Arc::new(EventPublisher::new(nats_client.clone())); // clone: NatsClient is cheap (Arc internally)
+    let nats_client = try_connect_nats(&config).await;
+    let publisher = make_publisher(nats_client.clone()); // clone: NatsClient is cheap (Arc internally), Option clone is fine
     let config = Arc::new(config);
+
+    if config.expose_api_token().is_none() {
+        warn!("no api_token configured — all API requests will be rejected with 401");
+    }
 
     let registry = register_default_plugins(&config)
         .map_err(|e| anyhow::anyhow!("failed to register plugins: {e}"))?;
@@ -181,33 +206,31 @@ pub async fn start(config_path: Option<&str>) -> Result<()> {
         Arc::clone(&publisher),
     ));
 
-    let lifecycle_manager: Arc<DefaultLifecycleManager> = Arc::new(DefaultLifecycleManager::new(
+    let lifecycle_manager = Arc::new(DefaultLifecycleManager::new(
         Arc::clone(&registry),
         Arc::clone(&event_bus),
         Arc::clone(&config),
-        pool.clone(), // clone: SqlitePool uses Arc internally
+        pool, // clone: not needed — last use of pool
         Arc::clone(&publisher),
         Arc::clone(&session_manager),
     ));
 
-    lifecycle_manager
-        .start()
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to start lifecycle manager: {e}"))?;
+    Ok(ServerBootstrap {
+        config,
+        session_manager,
+        lifecycle_manager,
+        nats_client,
+    })
+}
 
-    let poll_lifecycle = Arc::clone(&lifecycle_manager);
-    let poll_handle = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
-        loop {
-            interval.tick().await;
-            if let Err(e) = poll_lifecycle.poll_sessions().await {
-                tracing::warn!("poll_sessions error: {e}");
-            }
-        }
-    });
-
+async fn run_server(
+    config: &OrchestratorConfig,
+    session_manager: &Arc<dyn SessionManager>,
+    lifecycle_manager: &Arc<DefaultLifecycleManager>,
+    nats_client: Option<NatsClient>,
+) -> Result<()> {
     let web_state = Arc::new(ennio_web::state::AppState {
-        session_manager: Arc::clone(&session_manager),
+        session_manager: Arc::clone(session_manager),
         lifecycle_manager: lifecycle_manager.clone() as Arc<dyn LifecycleManager>, // clone: Arc ref count bump for trait object
         api_token: config.expose_api_token().map(str::to_owned),
         cors_origins: config.cors_origins.clone(), // clone: small Vec<String> for web state
@@ -223,28 +246,76 @@ pub async fn start(config_path: Option<&str>) -> Result<()> {
     info!(port = config.port, "ennio orchestrator started");
     println!("Ennio orchestrator listening on {bind_addr}");
 
-    let mut shutdown_sub = nats_client
-        .subscribe("ennio.commands.shutdown")
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to subscribe to shutdown topic: {e}"))?;
+    match nats_client {
+        Some(client) => {
+            let mut shutdown_sub = client
+                .subscribe("ennio.commands.shutdown")
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to subscribe to shutdown topic: {e}"))?;
 
-    tokio::select! {
-        result = axum::serve(listener, router) => {
-            if let Err(e) = result {
-                tracing::error!("web server error: {e}");
+            tokio::select! {
+                result = axum::serve(listener, router) => {
+                    if let Err(e) = result {
+                        tracing::error!("web server error: {e}");
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    info!("received ctrl-c, shutting down");
+                }
+                _ = shutdown_sub.next() => {
+                    info!("received shutdown command via NATS");
+                }
             }
         }
-        _ = tokio::signal::ctrl_c() => {
-            info!("received ctrl-c, shutting down");
-        }
-        _ = shutdown_sub.next() => {
-            info!("received shutdown command via NATS");
+        None => {
+            warn!("NATS not configured, remote shutdown unavailable (use Ctrl+C)");
+
+            tokio::select! {
+                result = axum::serve(listener, router) => {
+                    if let Err(e) = result {
+                        tracing::error!("web server error: {e}");
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    info!("received ctrl-c, shutting down");
+                }
+            }
         }
     }
 
+    Ok(())
+}
+
+pub async fn start(config_path: Option<&str>) -> Result<()> {
+    let boot = bootstrap_server(config_path).await?;
+
+    boot.lifecycle_manager
+        .start()
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to start lifecycle manager: {e}"))?;
+
+    let poll_lifecycle = Arc::clone(&boot.lifecycle_manager);
+    let poll_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            if let Err(e) = poll_lifecycle.poll_sessions().await {
+                tracing::warn!("poll_sessions error: {e}");
+            }
+        }
+    });
+
+    run_server(
+        &boot.config,
+        &boot.session_manager,
+        &boot.lifecycle_manager,
+        boot.nats_client,
+    )
+    .await?;
+
     poll_handle.abort();
 
-    if let Err(e) = lifecycle_manager.stop().await {
+    if let Err(e) = boot.lifecycle_manager.stop().await {
         tracing::warn!("lifecycle manager stop error: {e}");
     }
 
@@ -255,7 +326,18 @@ pub async fn start(config_path: Option<&str>) -> Result<()> {
 
 pub async fn stop(config_path: Option<&str>) -> Result<()> {
     let config = load_orchestrator_config(config_path)?;
-    let nats_client = connect_nats(&config).await?;
+
+    if !config.nats_configured() {
+        bail!(
+            "NATS is not configured. Cannot send remote shutdown command.\n\
+             Use Ctrl+C to stop a locally running orchestrator, or set nats_url in your config."
+        );
+    }
+
+    let nats_client = try_connect_nats(&config)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("failed to connect to NATS — is the server running?"))?;
+
     let publisher = EventPublisher::new(nats_client);
 
     publisher

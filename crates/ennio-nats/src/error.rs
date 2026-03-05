@@ -14,4 +14,7 @@ pub enum NatsError {
 
     #[error("invalid NATS topic: {0}")]
     InvalidTopic(String),
+
+    #[error("NATS is not configured")]
+    NotConfigured,
 }

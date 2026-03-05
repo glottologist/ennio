@@ -94,6 +94,10 @@ mod tests {
         400
     )]
     #[case(
+        EnnioError::Budget { project_id: ProjectId::new("p1").unwrap(), message: "over limit".to_owned() },
+        402
+    )]
+    #[case(
         EnnioError::Timeout { duration: std::time::Duration::from_secs(30), message: "timed out".to_owned() },
         504
     )]
@@ -124,17 +128,6 @@ mod tests {
     fn api_error_from_ennio_error_status_code(#[case] err: EnnioError, #[case] expected_code: u16) {
         let api_err = ApiError::from(err);
         assert_eq!(api_err.code, expected_code);
-    }
-
-    #[test]
-    fn api_error_from_budget_error_is_402() {
-        let project_id = ProjectId::new("p1").unwrap();
-        let err = EnnioError::Budget {
-            project_id,
-            message: "over limit".to_owned(),
-        };
-        let api_err = ApiError::from(err);
-        assert_eq!(api_err.code, 402);
     }
 
     #[test]

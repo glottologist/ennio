@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use sha2::{Digest, Sha256};
 
+use crate::error::EnnioError;
+
 /// Compute a 12-char hex hash from a config directory path.
 /// Matches TS: sha256(configDir).slice(0, 12)
 pub fn config_hash(config_dir: &str) -> String {
@@ -11,32 +13,29 @@ pub fn config_hash(config_dir: &str) -> String {
     hex::encode(&result[..6])
 }
 
-pub fn base_data_dir() -> PathBuf {
-    dirs_next().join(".ennio")
+pub fn base_data_dir() -> Result<PathBuf, EnnioError> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| EnnioError::Config {
+            message: "HOME environment variable not set".to_owned(),
+        })?;
+    Ok(home.join(".ennio"))
 }
 
-fn dirs_next() -> PathBuf {
-    home_dir().unwrap_or_else(|| PathBuf::from("/tmp"))
+pub fn data_dir(hash: &str, project_id: &str) -> Result<PathBuf, EnnioError> {
+    Ok(base_data_dir()?.join(format!("{hash}-{project_id}")))
 }
 
-fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+pub fn sessions_dir(hash: &str, project_id: &str) -> Result<PathBuf, EnnioError> {
+    Ok(data_dir(hash, project_id)?.join("sessions"))
 }
 
-pub fn data_dir(hash: &str, project_id: &str) -> PathBuf {
-    base_data_dir().join(format!("{hash}-{project_id}"))
+pub fn worktrees_dir(hash: &str, project_id: &str) -> Result<PathBuf, EnnioError> {
+    Ok(data_dir(hash, project_id)?.join("worktrees"))
 }
 
-pub fn sessions_dir(hash: &str, project_id: &str) -> PathBuf {
-    data_dir(hash, project_id).join("sessions")
-}
-
-pub fn worktrees_dir(hash: &str, project_id: &str) -> PathBuf {
-    data_dir(hash, project_id).join("worktrees")
-}
-
-pub fn archive_dir(hash: &str, project_id: &str) -> PathBuf {
-    data_dir(hash, project_id).join("archive")
+pub fn archive_dir(hash: &str, project_id: &str) -> Result<PathBuf, EnnioError> {
+    Ok(data_dir(hash, project_id)?.join("archive"))
 }
 
 /// Generate a session prefix from a project name.
@@ -94,8 +93,8 @@ mod tests {
 
         #[test]
         fn data_dir_under_base(hash in "[a-f0-9]{12}", project in "[a-z]{1,10}") {
-            let d = data_dir(&hash, &project);
-            assert!(d.starts_with(base_data_dir()));
+            let d = data_dir(&hash, &project).unwrap();
+            assert!(d.starts_with(base_data_dir().unwrap()));
         }
     }
 

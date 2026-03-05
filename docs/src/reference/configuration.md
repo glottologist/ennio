@@ -15,7 +15,7 @@ Complete reference for `ennio.yaml`. All fields listed with types, defaults, and
 | `notifiers` | `[NotifierConfig]` | `[]` | Notification channel definitions |
 | `notification_routing` | `Map<String, [String]>` | `{}` | Route reaction types to specific notifiers |
 | `reactions` | `Map<String, ReactionConfig>` | built-in set | Global reaction overrides |
-| `database_url` | `String?` | `sqlite::memory:` | SQLite database URL |
+| `database_url` | `String?` | `sqlite:ennio.db` | SQLite database URL |
 | `nats_url` | `String?` | `nats://127.0.0.1:4222` | NATS server URL |
 | `api_token` | `SecretString?` | — | Bearer token for API authentication |
 | `cors_origins` | `[String]` | `[]` | Allowed CORS origins |

@@ -3,18 +3,15 @@ use ennio_core::event::EventType;
 
 const PREFIX: &str = "ennio";
 
+const INVALID_SEGMENT_CHARS: &[char] = &[' ', '.', '*', '>', '\t', '\n', '\r', '\0'];
+
 fn validate_segment(segment: &str) -> Result<(), NatsError> {
     if segment.is_empty() {
         return Err(NatsError::InvalidTopic("empty segment".to_string()));
     }
-    if segment.contains(' ') {
+    if let Some(ch) = segment.chars().find(|c| INVALID_SEGMENT_CHARS.contains(c)) {
         return Err(NatsError::InvalidTopic(format!(
-            "segment contains spaces: '{segment}'"
-        )));
-    }
-    if segment.contains('.') {
-        return Err(NatsError::InvalidTopic(format!(
-            "segment contains dots: '{segment}'"
+            "segment contains invalid character {ch:?}: '{segment}'"
         )));
     }
     Ok(())
@@ -150,6 +147,7 @@ fn subscribe_pattern(prefix: &str, domain: &str, project_id: &str) -> Result<Str
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
+    use rstest::rstest;
 
     use super::*;
 
@@ -283,28 +281,62 @@ mod tests {
         }
     }
 
-    #[test]
-    fn lifecycle_topic_has_three_segments() {
-        let topic = lifecycle_topic("poll_started").unwrap();
-        assert_eq!(topic, "ennio.lifecycle.poll_started");
+    #[rstest]
+    #[case("test*", "NATS single-level wildcard")]
+    #[case("test>", "NATS multi-level wildcard")]
+    #[case("*", "bare single-level wildcard")]
+    #[case(">", "bare multi-level wildcard")]
+    #[case("foo*bar", "embedded single-level wildcard")]
+    #[case("foo>bar", "embedded multi-level wildcard")]
+    #[case("test\tvalue", "tab character")]
+    #[case("test\nvalue", "newline character")]
+    #[case("test\rvalue", "carriage return")]
+    #[case("test\0value", "null byte")]
+    fn validate_segment_rejects_nats_special_chars(#[case] input: &str, #[case] label: &str) {
+        let result = validate_segment(input);
+        assert!(result.is_err(), "expected rejection for {label}: {input:?}");
     }
 
-    #[test]
-    fn commands_topic_has_three_segments() {
-        let topic = commands_topic("spawn").unwrap();
-        assert_eq!(topic, "ennio.commands.spawn");
+    #[rstest]
+    #[case("test*project", "wildcard in project_id")]
+    #[case("test>project", "multi-level wildcard in project_id")]
+    fn session_topic_rejects_wildcard_project_id(#[case] project_id: &str, #[case] label: &str) {
+        let result = session_topic(project_id, "spawned");
+        assert!(
+            result.is_err(),
+            "expected rejection for {label}: {project_id:?}"
+        );
     }
 
-    #[test]
-    fn metrics_topic_has_three_segments() {
-        let topic = metrics_topic("cost_recorded").unwrap();
-        assert_eq!(topic, "ennio.metrics.cost_recorded");
+    #[rstest]
+    #[case("test*action", "wildcard in action")]
+    #[case("test>action", "multi-level wildcard in action")]
+    fn session_topic_rejects_wildcard_action(#[case] action: &str, #[case] label: &str) {
+        let result = session_topic("valid-project", action);
+        assert!(
+            result.is_err(),
+            "expected rejection for {label}: {action:?}"
+        );
     }
 
-    #[test]
-    fn dashboard_topic_has_three_segments() {
-        let topic = dashboard_topic("sessions_updated").unwrap();
-        assert_eq!(topic, "ennio.dashboard.sessions_updated");
+    #[rstest]
+    #[case("lifecycle", "poll_started", "ennio.lifecycle.poll_started")]
+    #[case("commands", "spawn", "ennio.commands.spawn")]
+    #[case("metrics", "cost_recorded", "ennio.metrics.cost_recorded")]
+    #[case("dashboard", "sessions_updated", "ennio.dashboard.sessions_updated")]
+    fn three_segment_topic_format(
+        #[case] domain: &str,
+        #[case] action: &str,
+        #[case] expected: &str,
+    ) {
+        let topic = match domain {
+            "lifecycle" => lifecycle_topic(action),
+            "commands" => commands_topic(action),
+            "metrics" => metrics_topic(action),
+            "dashboard" => dashboard_topic(action),
+            other => panic!("unexpected domain in test data: {other}"),
+        };
+        assert_eq!(topic.unwrap(), expected);
     }
 
     #[test]
@@ -325,18 +357,25 @@ mod tests {
         assert_eq!(pattern, "ennio.node.remote-host.*");
     }
 
-    #[test]
-    fn node_event_types_map_correctly() {
-        let topic = topic_for_event_type(EventType::NodeConnected, "my-host").unwrap();
-        assert_eq!(topic, "ennio.node.my-host.connected");
-
-        let topic = topic_for_event_type(EventType::NodeDisconnected, "my-host").unwrap();
-        assert_eq!(topic, "ennio.node.my-host.disconnected");
-
-        let topic = topic_for_event_type(EventType::NodeLaunched, "my-host").unwrap();
-        assert_eq!(topic, "ennio.node.my-host.launched");
-
-        let topic = topic_for_event_type(EventType::NodeHealthCheck, "my-host").unwrap();
-        assert_eq!(topic, "ennio.node.my-host.health_check");
+    #[rstest]
+    #[case(EventType::NodeConnected, "my-host", "ennio.node.my-host.connected")]
+    #[case(
+        EventType::NodeDisconnected,
+        "my-host",
+        "ennio.node.my-host.disconnected"
+    )]
+    #[case(EventType::NodeLaunched, "my-host", "ennio.node.my-host.launched")]
+    #[case(
+        EventType::NodeHealthCheck,
+        "my-host",
+        "ennio.node.my-host.health_check"
+    )]
+    fn node_event_type_mapping(
+        #[case] event_type: EventType,
+        #[case] host: &str,
+        #[case] expected: &str,
+    ) {
+        let topic = topic_for_event_type(event_type, host).unwrap();
+        assert_eq!(topic, expected);
     }
 }

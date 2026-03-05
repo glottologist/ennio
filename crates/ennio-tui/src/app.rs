@@ -30,25 +30,8 @@ impl SessionView {
         }
     }
 
-    pub fn status_label(&self) -> &'static str {
-        match self.status {
-            SessionStatus::Spawning => "spawning",
-            SessionStatus::Working => "working",
-            SessionStatus::PrOpen => "pr_open",
-            SessionStatus::PrDraft => "pr_draft",
-            SessionStatus::CiPassing => "ci_passing",
-            SessionStatus::CiFailed => "ci_failed",
-            SessionStatus::CiFixSent => "ci_fix_sent",
-            SessionStatus::CiFixFailed => "ci_fix_failed",
-            SessionStatus::ReviewPending => "review_pending",
-            SessionStatus::ChangesRequested => "changes_requested",
-            SessionStatus::Approved => "approved",
-            SessionStatus::MergeConflicts => "merge_conflicts",
-            SessionStatus::Merged => "merged",
-            SessionStatus::Done => "done",
-            SessionStatus::Exited => "exited",
-            SessionStatus::Killed => "killed",
-        }
+    pub fn status_label(&self) -> String {
+        self.status.to_string()
     }
 }
 
@@ -245,5 +228,27 @@ mod tests {
     fn status_label_correct(#[case] status: SessionStatus, #[case] expected: &str) {
         let view = make_session_view("test", status);
         assert_eq!(view.status_label(), expected);
+    }
+
+    #[rstest]
+    #[case(SessionStatus::CiFailed)]
+    #[case(SessionStatus::CiFixFailed)]
+    #[case(SessionStatus::ChangesRequested)]
+    #[case(SessionStatus::MergeConflicts)]
+    fn needs_attention_returns_true(#[case] status: SessionStatus) {
+        assert!(status.needs_attention());
+        assert!(status.attention_reason().is_some());
+    }
+
+    #[rstest]
+    #[case(SessionStatus::Spawning)]
+    #[case(SessionStatus::Working)]
+    #[case(SessionStatus::CiPassing)]
+    #[case(SessionStatus::Approved)]
+    #[case(SessionStatus::Merged)]
+    #[case(SessionStatus::Done)]
+    fn no_attention_returns_false(#[case] status: SessionStatus) {
+        assert!(!status.needs_attention());
+        assert!(status.attention_reason().is_none());
     }
 }

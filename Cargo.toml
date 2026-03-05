@@ -36,7 +36,7 @@ futures = "0.3"
 # Web
 axum = { version = "0.8", features = ["ws", "macros"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header", "limit"] }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "json", "migrate"] }
@@ -67,6 +67,7 @@ getrandom = "0.3"
 secrecy = { version = "0.10", features = ["serde"] }
 sha2 = "0.10"
 subtle = "2"
+zeroize = "1"
 
 # HTTP
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }

@@ -1791,6 +1791,7 @@ version = "0.1.0"
 dependencies = [
  "async-nats",
  "bytes",
+ "chrono",
  "ennio-core",
  "futures",
  "proptest",
@@ -1901,6 +1902,7 @@ dependencies = [
  "tokio-test",
  "tonic 0.13.1",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -1928,6 +1930,7 @@ dependencies = [
  "tokio-test",
  "tonic 0.13.1",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use ennio_core::id::{ProjectId, SessionId};
@@ -33,7 +34,10 @@ pub struct SessionSummary {
     pub activity: Option<String>,
     pub branch: Option<String>,
     pub pr_url: Option<String>,
+    pub pr_number: Option<i32>,
     pub agent_name: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub last_activity_at: Option<DateTime<Utc>>,
 }
 
 fn session_to_summary(s: &Session) -> SessionSummary {
@@ -44,7 +48,10 @@ fn session_to_summary(s: &Session) -> SessionSummary {
         activity: s.activity.map(|a| a.to_string()),
         branch: s.branch.clone(), // clone: extracting from borrowed session into owned response
         pr_url: s.pr_url.clone(), // clone: extracting from borrowed session into owned response
+        pr_number: s.pr_number,
         agent_name: s.agent_name.clone(), // clone: extracting from borrowed session into owned response
+        created_at: Some(s.created_at),
+        last_activity_at: Some(s.last_activity_at),
     }
 }
 

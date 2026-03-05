@@ -42,6 +42,44 @@ impl SessionStatus {
     pub fn is_restorable(self) -> bool {
         matches!(self, Self::Exited)
     }
+
+    pub fn needs_attention(self) -> bool {
+        matches!(
+            self,
+            Self::CiFailed | Self::CiFixFailed | Self::ChangesRequested | Self::MergeConflicts
+        )
+    }
+
+    pub fn attention_reason(self) -> Option<&'static str> {
+        match self {
+            Self::CiFailed => Some("CI failed"),
+            Self::CiFixFailed => Some("CI fix attempt failed"),
+            Self::ChangesRequested => Some("Changes requested by reviewer"),
+            Self::MergeConflicts => Some("Merge conflicts detected"),
+            _ => None,
+        }
+    }
+
+    pub fn display_label(self) -> &'static str {
+        match self {
+            Self::Spawning => "Spawning",
+            Self::Working => "Working",
+            Self::PrOpen => "PR Open",
+            Self::PrDraft => "PR Draft",
+            Self::CiPassing => "CI Passing",
+            Self::CiFailed => "CI Failed",
+            Self::CiFixSent => "CI Fix Sent",
+            Self::CiFixFailed => "CI Fix Failed",
+            Self::ReviewPending => "Review Pending",
+            Self::ChangesRequested => "Changes Requested",
+            Self::Approved => "Approved",
+            Self::MergeConflicts => "Merge Conflicts",
+            Self::Merged => "Merged",
+            Self::Done => "Done",
+            Self::Exited => "Exited",
+            Self::Killed => "Killed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString)]
@@ -120,5 +158,40 @@ mod tests {
     #[case(SessionStatus::Merged, false)]
     fn status_is_restorable(#[case] status: SessionStatus, #[case] expected: bool) {
         assert_eq!(status.is_restorable(), expected);
+    }
+
+    #[rstest]
+    #[case(SessionStatus::CiFailed, true)]
+    #[case(SessionStatus::CiFixFailed, true)]
+    #[case(SessionStatus::ChangesRequested, true)]
+    #[case(SessionStatus::MergeConflicts, true)]
+    #[case(SessionStatus::Spawning, false)]
+    #[case(SessionStatus::Working, false)]
+    #[case(SessionStatus::Approved, false)]
+    #[case(SessionStatus::Merged, false)]
+    fn status_needs_attention(#[case] status: SessionStatus, #[case] expected: bool) {
+        assert_eq!(status.needs_attention(), expected);
+        assert_eq!(status.attention_reason().is_some(), expected);
+    }
+
+    #[rstest]
+    #[case(SessionStatus::Spawning, "Spawning")]
+    #[case(SessionStatus::Working, "Working")]
+    #[case(SessionStatus::PrOpen, "PR Open")]
+    #[case(SessionStatus::PrDraft, "PR Draft")]
+    #[case(SessionStatus::CiPassing, "CI Passing")]
+    #[case(SessionStatus::CiFailed, "CI Failed")]
+    #[case(SessionStatus::CiFixSent, "CI Fix Sent")]
+    #[case(SessionStatus::CiFixFailed, "CI Fix Failed")]
+    #[case(SessionStatus::ReviewPending, "Review Pending")]
+    #[case(SessionStatus::ChangesRequested, "Changes Requested")]
+    #[case(SessionStatus::Approved, "Approved")]
+    #[case(SessionStatus::MergeConflicts, "Merge Conflicts")]
+    #[case(SessionStatus::Merged, "Merged")]
+    #[case(SessionStatus::Done, "Done")]
+    #[case(SessionStatus::Exited, "Exited")]
+    #[case(SessionStatus::Killed, "Killed")]
+    fn display_label_correct(#[case] status: SessionStatus, #[case] expected: &str) {
+        assert_eq!(status.display_label(), expected);
     }
 }

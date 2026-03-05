@@ -5,8 +5,8 @@ Ennio uses SQLite with WAL journal mode for persistence. The database is created
 ## Connection
 
 ```yaml
-database_url: sqlite:ennio.db      # file-based (recommended)
-database_url: sqlite::memory:       # in-memory (default, data lost on restart)
+database_url: sqlite:ennio.db      # file-based (default)
+database_url: sqlite::memory:       # in-memory (data lost on restart)
 ```
 
 The connection pool is configured with:

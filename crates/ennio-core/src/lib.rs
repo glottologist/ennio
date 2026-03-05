@@ -11,6 +11,7 @@ pub mod prompt;
 pub mod reaction;
 pub mod runtime;
 pub mod scm;
+pub(crate) mod serde_helpers;
 pub mod session;
 pub mod terminal;
 pub mod tracker;

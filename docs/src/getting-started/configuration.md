@@ -61,7 +61,7 @@ Ennio uses SQLite for persistence. The database file is created automatically:
 database_url: sqlite:ennio.db    # relative to working directory
 ```
 
-If omitted, Ennio uses `sqlite::memory:` (data lost on restart).
+If omitted, Ennio defaults to `sqlite:ennio.db` (file-based, persists across restarts).
 
 ## API Authentication
 

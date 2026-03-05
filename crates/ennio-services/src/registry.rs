@@ -102,15 +102,21 @@ impl Default for PluginRegistry {
 pub fn register_default_plugins(
     config: &ennio_core::config::OrchestratorConfig,
 ) -> Result<PluginRegistry, EnnioError> {
-    use ennio_plugins::agent::{ClaudeCodeAgent, aider_agent, codex_agent, opencode_agent};
-    use ennio_plugins::notifier::{DesktopNotifier, SlackNotifier, WebhookNotifier};
-    use ennio_plugins::runtime::{ProcessRuntime, TmuxRuntime};
-    use ennio_plugins::scm::GitHubScm;
-    use ennio_plugins::terminal::WebTerminal;
-    use ennio_plugins::tracker::{GitHubTracker, LinearTracker};
-    use ennio_plugins::workspace::{CloneWorkspace, WorktreeWorkspace};
-
     let mut registry = PluginRegistry::new();
+    register_builtin_plugins(&mut registry, config)?;
+    register_notifiers(&mut registry, config)?;
+    register_project_plugins(&mut registry, config)?;
+    Ok(registry)
+}
+
+fn register_builtin_plugins(
+    registry: &mut PluginRegistry,
+    config: &ennio_core::config::OrchestratorConfig,
+) -> Result<(), EnnioError> {
+    use ennio_plugins::agent::{ClaudeCodeAgent, aider_agent, codex_agent, opencode_agent};
+    use ennio_plugins::runtime::{ProcessRuntime, TmuxRuntime};
+    use ennio_plugins::terminal::WebTerminal;
+    use ennio_plugins::workspace::{CloneWorkspace, WorktreeWorkspace};
 
     registry.register_runtime(Arc::new(TmuxRuntime::new()) as Arc<dyn Runtime>)?;
     registry.register_runtime(Arc::new(ProcessRuntime::new()) as Arc<dyn Runtime>)?;
@@ -123,8 +129,25 @@ pub fn register_default_plugins(
     registry.register_workspace(Arc::new(WorktreeWorkspace::new()) as Arc<dyn Workspace>)?;
     registry.register_workspace(Arc::new(CloneWorkspace::new()) as Arc<dyn Workspace>)?;
 
-    let terminal_url = format!("http://127.0.0.1:{}", config.terminal_port);
-    registry.register_terminal(Arc::new(WebTerminal::new(terminal_url)) as Arc<dyn Terminal>)?;
+    let mut terminal_url = url::Url::parse("http://127.0.0.1").map_err(|e| EnnioError::Config {
+        message: e.to_string(),
+    })?;
+    terminal_url
+        .set_port(Some(config.terminal_port))
+        .map_err(|()| EnnioError::Config {
+            message: "failed to set terminal port on URL".to_owned(),
+        })?;
+    registry
+        .register_terminal(Arc::new(WebTerminal::new(terminal_url.as_str())) as Arc<dyn Terminal>)?;
+
+    Ok(())
+}
+
+fn register_notifiers(
+    registry: &mut PluginRegistry,
+    config: &ennio_core::config::OrchestratorConfig,
+) -> Result<(), EnnioError> {
+    use ennio_plugins::notifier::{DesktopNotifier, SlackNotifier, WebhookNotifier};
 
     for notifier_config in &config.notifiers {
         let notifier: Arc<dyn Notifier> = match notifier_config.plugin.as_str() {
@@ -164,6 +187,16 @@ pub fn register_default_plugins(
         registry.register_notifier(notifier)?;
     }
 
+    Ok(())
+}
+
+fn register_project_plugins(
+    registry: &mut PluginRegistry,
+    config: &ennio_core::config::OrchestratorConfig,
+) -> Result<(), EnnioError> {
+    use ennio_plugins::scm::GitHubScm;
+    use ennio_plugins::tracker::{GitHubTracker, LinearTracker};
+
     let mut has_github_scm = false;
     let mut has_github_tracker = false;
     let mut has_linear_tracker = false;
@@ -199,7 +232,7 @@ pub fn register_default_plugins(
         }
     }
 
-    Ok(registry)
+    Ok(())
 }
 
 #[cfg(test)]

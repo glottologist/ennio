@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::event::EventPriority;
 use crate::id::ProjectId;
 use crate::reaction::{ReactionAction, ReactionConfig};
+use crate::serde_helpers::{duration_millis, duration_secs, option_duration_secs};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OrchestratorConfig {
@@ -65,25 +66,45 @@ impl Default for OrchestratorConfig {
 const DEFAULT_NATS_URL: &str = "nats://127.0.0.1:4222";
 const DEFAULT_DATABASE_URL: &str = "sqlite:ennio.db";
 
+fn resolve_url(config_val: Option<&str>, env_var: &str, default: &str) -> String {
+    config_val
+        .map(str::to_owned)
+        .or_else(|| std::env::var(env_var).ok())
+        .unwrap_or_else(|| default.to_owned())
+}
+
 impl OrchestratorConfig {
+    pub fn find_project(
+        &self,
+        project_id: &crate::id::ProjectId,
+    ) -> Result<&ProjectConfig, crate::error::EnnioError> {
+        self.projects
+            .iter()
+            .find(|p| p.project_id.as_ref().is_some_and(|id| id == project_id))
+            .ok_or_else(|| crate::error::EnnioError::NotFound {
+                entity: "project".to_owned(),
+                id: project_id.to_string(),
+            })
+    }
+
     pub fn expose_api_token(&self) -> Option<&str> {
         self.api_token.as_ref().map(|s| s.expose_secret())
     }
 
     pub fn resolve_database_url(&self) -> String {
-        self.database_url
-            .as_deref()
-            .map(str::to_owned)
-            .or_else(|| std::env::var("DATABASE_URL").ok())
-            .unwrap_or_else(|| DEFAULT_DATABASE_URL.to_owned())
+        resolve_url(
+            self.database_url.as_deref(),
+            "DATABASE_URL",
+            DEFAULT_DATABASE_URL,
+        )
+    }
+
+    pub fn nats_configured(&self) -> bool {
+        self.nats_url.is_some() || std::env::var("NATS_URL").is_ok()
     }
 
     pub fn resolve_nats_url(&self) -> String {
-        self.nats_url
-            .as_deref()
-            .map(str::to_owned)
-            .or_else(|| std::env::var("NATS_URL").ok())
-            .unwrap_or_else(|| DEFAULT_NATS_URL.to_owned())
+        resolve_url(self.nats_url.as_deref(), "NATS_URL", DEFAULT_NATS_URL)
     }
 }
 
@@ -262,119 +283,117 @@ pub struct SymlinkConfig {
     pub target: PathBuf,
 }
 
-type ReactionDef = (
-    &'static str,
-    ReactionAction,
-    EventPriority,
-    u32,
-    Option<u64>,
-    Option<u64>,
-    bool,
-);
+struct ReactionDef {
+    name: &'static str,
+    action: ReactionAction,
+    priority: EventPriority,
+    retries: u32,
+    escalate_secs: Option<u64>,
+    threshold_secs: Option<u64>,
+    include_summary: bool,
+}
 
 pub fn default_reactions() -> HashMap<String, ReactionConfig> {
     let defs: &[ReactionDef] = &[
-        (
-            "ci-failed",
-            ReactionAction::SendToAgent,
-            EventPriority::Action,
-            2,
-            Some(120),
-            None,
-            false,
-        ),
-        (
-            "changes-requested",
-            ReactionAction::SendToAgent,
-            EventPriority::Action,
-            0,
-            Some(1800),
-            None,
-            false,
-        ),
-        (
-            "bugbot-comments",
-            ReactionAction::SendToAgent,
-            EventPriority::Action,
-            0,
-            Some(1800),
-            None,
-            false,
-        ),
-        (
-            "merge-conflicts",
-            ReactionAction::SendToAgent,
-            EventPriority::Action,
-            0,
-            Some(900),
-            None,
-            false,
-        ),
-        (
-            "approved-and-green",
-            ReactionAction::Notify,
-            EventPriority::Action,
-            0,
-            None,
-            None,
-            false,
-        ),
-        (
-            "agent-stuck",
-            ReactionAction::Notify,
-            EventPriority::Urgent,
-            0,
-            None,
-            Some(600),
-            false,
-        ),
-        (
-            "agent-needs-input",
-            ReactionAction::Notify,
-            EventPriority::Urgent,
-            0,
-            None,
-            None,
-            false,
-        ),
-        (
-            "agent-exited",
-            ReactionAction::Notify,
-            EventPriority::Urgent,
-            0,
-            None,
-            None,
-            false,
-        ),
-        (
-            "all-complete",
-            ReactionAction::Notify,
-            EventPriority::Info,
-            0,
-            None,
-            None,
-            true,
-        ),
+        ReactionDef {
+            name: "ci-failed",
+            action: ReactionAction::SendToAgent,
+            priority: EventPriority::Action,
+            retries: 2,
+            escalate_secs: Some(120),
+            threshold_secs: None,
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "changes-requested",
+            action: ReactionAction::SendToAgent,
+            priority: EventPriority::Action,
+            retries: 0,
+            escalate_secs: Some(1800),
+            threshold_secs: None,
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "bugbot-comments",
+            action: ReactionAction::SendToAgent,
+            priority: EventPriority::Action,
+            retries: 0,
+            escalate_secs: Some(1800),
+            threshold_secs: None,
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "merge-conflicts",
+            action: ReactionAction::SendToAgent,
+            priority: EventPriority::Action,
+            retries: 0,
+            escalate_secs: Some(900),
+            threshold_secs: None,
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "approved-and-green",
+            action: ReactionAction::Notify,
+            priority: EventPriority::Action,
+            retries: 0,
+            escalate_secs: None,
+            threshold_secs: None,
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "agent-stuck",
+            action: ReactionAction::Notify,
+            priority: EventPriority::Urgent,
+            retries: 0,
+            escalate_secs: None,
+            threshold_secs: Some(600),
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "agent-needs-input",
+            action: ReactionAction::Notify,
+            priority: EventPriority::Urgent,
+            retries: 0,
+            escalate_secs: None,
+            threshold_secs: None,
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "agent-exited",
+            action: ReactionAction::Notify,
+            priority: EventPriority::Urgent,
+            retries: 0,
+            escalate_secs: None,
+            threshold_secs: None,
+            include_summary: false,
+        },
+        ReactionDef {
+            name: "all-complete",
+            action: ReactionAction::Notify,
+            priority: EventPriority::Info,
+            retries: 0,
+            escalate_secs: None,
+            threshold_secs: None,
+            include_summary: true,
+        },
     ];
 
     defs.iter()
-        .map(
-            |(name, action, priority, retries, escalate, threshold, summary)| {
-                (
-                    (*name).to_string(),
-                    ReactionConfig {
-                        enabled: true,
-                        action: *action,
-                        message: None,
-                        priority: *priority,
-                        retries: *retries,
-                        escalate_after: escalate.map(Duration::from_secs),
-                        threshold: threshold.map(Duration::from_secs),
-                        include_summary: *summary,
-                    },
-                )
-            },
-        )
+        .map(|def| {
+            (
+                def.name.to_string(),
+                ReactionConfig {
+                    enabled: true,
+                    action: def.action,
+                    message: None,
+                    priority: def.priority,
+                    retries: def.retries,
+                    escalate_after: def.escalate_secs.map(Duration::from_secs),
+                    threshold: def.threshold_secs.map(Duration::from_secs),
+                    include_summary: def.include_summary,
+                },
+            )
+        })
         .collect()
 }
 
@@ -508,72 +527,6 @@ const fn default_ssh_strategy() -> SshStrategyConfig {
 
 const fn default_ssh_timeout() -> Duration {
     Duration::from_secs(30)
-}
-
-mod duration_secs {
-    use std::time::Duration;
-
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(value: &Duration, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u64(value.as_secs())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let secs = u64::deserialize(deserializer)?;
-        Ok(Duration::from_secs(secs))
-    }
-}
-
-mod option_duration_secs {
-    use std::time::Duration;
-
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(value: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match value {
-            Some(d) => serializer.serialize_some(&d.as_secs()),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let opt = Option::<u64>::deserialize(deserializer)?;
-        Ok(opt.map(Duration::from_secs))
-    }
-}
-
-mod duration_millis {
-    use std::time::Duration;
-
-    use serde::{self, Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(value: &Duration, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u64(u64::try_from(value.as_millis()).unwrap_or(u64::MAX))
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let millis = u64::deserialize(deserializer)?;
-        Ok(Duration::from_millis(millis))
-    }
 }
 
 #[cfg(test)]
@@ -882,6 +835,25 @@ mod tests {
 
         temp_env::with_var("DATABASE_URL", env_val, || {
             assert_eq!(config.resolve_database_url(), expected);
+        });
+    }
+
+    #[rstest]
+    #[case(Some("nats://custom:4222"), None, true)]
+    #[case(None, Some("nats://env:4222"), true)]
+    #[case(None, None, false)]
+    fn nats_configured_returns_expected(
+        #[case] config_val: Option<&str>,
+        #[case] env_val: Option<&str>,
+        #[case] expected: bool,
+    ) {
+        let config = OrchestratorConfig {
+            nats_url: config_val.map(str::to_owned),
+            ..Default::default()
+        };
+
+        temp_env::with_var("NATS_URL", env_val, || {
+            assert_eq!(config.nats_configured(), expected);
         });
     }
 

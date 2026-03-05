@@ -9,8 +9,8 @@ use tracing::{debug, error, info, warn};
 
 use ennio_core::config::OrchestratorConfig;
 use ennio_core::error::EnnioError;
-use ennio_core::event::{EventPriority, EventType, OrchestratorEvent};
-use ennio_core::id::{EventId, ProjectId, SessionId};
+use ennio_core::event::{EventPriority, EventType};
+use ennio_core::id::{ProjectId, SessionId};
 use ennio_core::lifecycle::{LifecycleManager, SessionManager, SessionState};
 use ennio_core::reaction::ReactionConfig;
 use ennio_core::scm::{CIStatus, PRState, ReviewDecision};
@@ -117,80 +117,14 @@ impl DefaultLifecycleManager {
     }
 
     async fn check_session_status(&self, session: &Session) -> Result<SessionState, EnnioError> {
-        let project = self
-            .config
-            .projects
-            .iter()
-            .find(|p| {
-                p.project_id
-                    .as_ref()
-                    .is_some_and(|id| id == &session.project_id)
-            })
-            .ok_or_else(|| EnnioError::NotFound {
-                entity: "project".to_owned(),
-                id: session.project_id.to_string(),
-            })?;
+        let project = self.find_project(session)?;
 
-        let is_node_strategy = project
-            .ssh_config
-            .as_ref()
-            .is_some_and(|ssh| ssh.strategy == ennio_core::config::SshStrategyConfig::Node);
-
-        let runtime_name = project
-            .runtime
-            .as_deref()
-            .unwrap_or(self.config.defaults.runtime.as_str());
-
-        let runtime_alive = if is_node_strategy {
-            if session.runtime_handle.is_some() {
-                self.emit_event(
-                    EventType::NodeHealthCheck,
-                    EventPriority::Info,
-                    &session.id,
-                    &session.project_id,
-                    "node health check via session manager",
-                );
-                true
-            } else {
-                false
-            }
-        } else if let Some(ref handle) = session.runtime_handle {
-            let runtime = self.registry.get_runtime(runtime_name)?;
-            runtime.is_alive(handle).await.unwrap_or(false)
-        } else {
-            false
-        };
-
-        if !runtime_alive && !session.status.is_terminal() {
-            let new_status = SessionStatus::Exited;
-            self.transition_status(session, new_status).await?;
-            return Ok(SessionState {
-                // clone: SessionId must be owned by SessionState
-                session_id: session.id.clone(),
-                status: new_status,
-                last_checked: Utc::now(),
-            });
+        if !self.is_runtime_alive(session, project).await? {
+            return self.transition_to_exited(session).await;
         }
 
-        let agent_name = project
-            .agent
-            .as_deref()
-            .unwrap_or(self.config.defaults.agent.as_str());
-
-        let agent_plugin = self.registry.get_agent(agent_name)?;
-
-        if let Some(ref handle) = session.runtime_handle {
-            let process_running = agent_plugin.is_process_running(handle).await?;
-            if !process_running {
-                self.transition_status(session, SessionStatus::Exited)
-                    .await?;
-                return Ok(SessionState {
-                    // clone: SessionId must be owned by SessionState
-                    session_id: session.id.clone(),
-                    status: SessionStatus::Exited,
-                    last_checked: Utc::now(),
-                });
-            }
+        if !self.is_agent_alive(session, project).await? {
+            return self.transition_to_exited(session).await;
         }
 
         let new_status = self.determine_status_from_external(session, project).await;
@@ -204,6 +138,77 @@ impl DefaultLifecycleManager {
             // clone: SessionId must be owned by SessionState
             session_id: session.id.clone(),
             status: new_status,
+            last_checked: Utc::now(),
+        })
+    }
+
+    fn find_project<'a>(
+        &'a self,
+        session: &Session,
+    ) -> Result<&'a ennio_core::config::ProjectConfig, EnnioError> {
+        self.config.find_project(&session.project_id)
+    }
+
+    async fn is_runtime_alive(
+        &self,
+        session: &Session,
+        project: &ennio_core::config::ProjectConfig,
+    ) -> Result<bool, EnnioError> {
+        let is_node_strategy = project
+            .ssh_config
+            .as_ref()
+            .is_some_and(|ssh| ssh.strategy == ennio_core::config::SshStrategyConfig::Node);
+
+        if is_node_strategy {
+            if session.runtime_handle.is_some() {
+                self.emit_event(
+                    EventType::NodeHealthCheck,
+                    EventPriority::Info,
+                    &session.id,
+                    &session.project_id,
+                    "node health check via session manager",
+                );
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        let Some(ref handle) = session.runtime_handle else {
+            return Ok(false);
+        };
+
+        let runtime_name = project
+            .runtime
+            .as_deref()
+            .unwrap_or(self.config.defaults.runtime.as_str());
+        let runtime = self.registry.get_runtime(runtime_name)?;
+        Ok(runtime.is_alive(handle).await.unwrap_or(false))
+    }
+
+    async fn is_agent_alive(
+        &self,
+        session: &Session,
+        project: &ennio_core::config::ProjectConfig,
+    ) -> Result<bool, EnnioError> {
+        let Some(ref handle) = session.runtime_handle else {
+            return Ok(true);
+        };
+
+        let agent_name = project
+            .agent
+            .as_deref()
+            .unwrap_or(self.config.defaults.agent.as_str());
+        let agent_plugin = self.registry.get_agent(agent_name)?;
+        agent_plugin.is_process_running(handle).await
+    }
+
+    async fn transition_to_exited(&self, session: &Session) -> Result<SessionState, EnnioError> {
+        self.transition_status(session, SessionStatus::Exited)
+            .await?;
+        Ok(SessionState {
+            // clone: SessionId must be owned by SessionState
+            session_id: session.id.clone(),
+            status: SessionStatus::Exited,
             last_checked: Utc::now(),
         })
     }
@@ -353,95 +358,15 @@ impl DefaultLifecycleManager {
 
         match reaction_config.action {
             ennio_core::reaction::ReactionAction::SendToAgent => {
-                let message = reaction_config
-                    .message
-                    .as_deref()
-                    .unwrap_or(default_reaction_message(reaction_key));
-
-                match self.session_manager.send(&session.id, message).await {
-                    Ok(()) => {
-                        info!(
-                            session_id = %session.id,
-                            reaction = reaction_key,
-                            "reaction sent to agent"
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            session_id = %session.id,
-                            reaction = reaction_key,
-                            error = %e,
-                            "failed to send reaction to agent"
-                        );
-                    }
-                }
+                self.execute_send_to_agent(session, reaction_key, reaction_config)
+                    .await;
             }
             ennio_core::reaction::ReactionAction::Notify => {
-                self.emit_event(
-                    EventType::ReactionTriggered,
-                    reaction_config.priority,
-                    &session.id,
-                    &session.project_id,
-                    &format!("notification reaction triggered: {reaction_key}"),
-                );
+                self.execute_notify(session, reaction_key, reaction_config);
             }
             ennio_core::reaction::ReactionAction::AutoMerge => {
-                let pr_number = match session.pr_number {
-                    Some(n) => n,
-                    None => {
-                        warn!(
-                            session_id = %session.id,
-                            "auto-merge skipped: no PR number"
-                        );
-                        return;
-                    }
-                };
-
-                let project = self.config.projects.iter().find(|p| {
-                    p.project_id
-                        .as_ref()
-                        .is_some_and(|id| id == &session.project_id)
-                });
-
-                let scm_config = match project.and_then(|p| p.scm_config.as_ref()) {
-                    Some(c) => c,
-                    None => {
-                        warn!(
-                            session_id = %session.id,
-                            "auto-merge skipped: no SCM config"
-                        );
-                        return;
-                    }
-                };
-
-                let scm = match self.registry.get_scm(&scm_config.plugin) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        error!(
-                            session_id = %session.id,
-                            error = %e,
-                            "auto-merge skipped: SCM plugin not found"
-                        );
-                        return;
-                    }
-                };
-
-                match scm.merge_pr(&session.project_id, pr_number).await {
-                    Ok(()) => {
-                        info!(
-                            session_id = %session.id,
-                            pr_number,
-                            "auto-merge completed"
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            session_id = %session.id,
-                            pr_number,
-                            error = %e,
-                            "auto-merge failed"
-                        );
-                    }
+                if !self.execute_auto_merge(session).await {
+                    return;
                 }
             }
         }
@@ -456,6 +381,103 @@ impl DefaultLifecycleManager {
             &session.project_id,
             &format!("reaction '{reaction_key}' executed (attempt {attempts})"),
         );
+    }
+
+    async fn execute_send_to_agent(
+        &self,
+        session: &Session,
+        reaction_key: &str,
+        reaction_config: &ReactionConfig,
+    ) {
+        let message = reaction_config
+            .message
+            .as_deref()
+            .unwrap_or(default_reaction_message(reaction_key));
+
+        match self.session_manager.send(&session.id, message).await {
+            Ok(()) => {
+                info!(
+                    session_id = %session.id,
+                    reaction = reaction_key,
+                    "reaction sent to agent"
+                );
+            }
+            Err(e) => {
+                error!(
+                    session_id = %session.id,
+                    reaction = reaction_key,
+                    error = %e,
+                    "failed to send reaction to agent"
+                );
+            }
+        }
+    }
+
+    fn execute_notify(
+        &self,
+        session: &Session,
+        reaction_key: &str,
+        reaction_config: &ReactionConfig,
+    ) {
+        self.emit_event(
+            EventType::ReactionTriggered,
+            reaction_config.priority,
+            &session.id,
+            &session.project_id,
+            &format!("notification reaction triggered: {reaction_key}"),
+        );
+    }
+
+    async fn execute_auto_merge(&self, session: &Session) -> bool {
+        let pr_number = match session.pr_number {
+            Some(n) => n,
+            None => {
+                warn!(session_id = %session.id, "auto-merge skipped: no PR number");
+                return false;
+            }
+        };
+
+        let project = self.config.projects.iter().find(|p| {
+            p.project_id
+                .as_ref()
+                .is_some_and(|id| id == &session.project_id)
+        });
+
+        let scm_config = match project.and_then(|p| p.scm_config.as_ref()) {
+            Some(c) => c,
+            None => {
+                warn!(session_id = %session.id, "auto-merge skipped: no SCM config");
+                return false;
+            }
+        };
+
+        let scm = match self.registry.get_scm(&scm_config.plugin) {
+            Ok(s) => s,
+            Err(e) => {
+                error!(
+                    session_id = %session.id,
+                    error = %e,
+                    "auto-merge skipped: SCM plugin not found"
+                );
+                return false;
+            }
+        };
+
+        match scm.merge_pr(&session.project_id, pr_number).await {
+            Ok(()) => {
+                info!(session_id = %session.id, pr_number, "auto-merge completed");
+                true
+            }
+            Err(e) => {
+                error!(
+                    session_id = %session.id,
+                    pr_number,
+                    error = %e,
+                    "auto-merge failed"
+                );
+                false
+            }
+        }
     }
 
     fn merge_reactions(&self, session: &Session) -> HashMap<String, ReactionConfig> {
@@ -486,28 +508,12 @@ impl DefaultLifecycleManager {
         project_id: &ProjectId,
         message: &str,
     ) {
-        let event = OrchestratorEvent {
-            id: EventId::random(),
-            event_type,
-            priority,
-            // clone: SessionId must be owned by the event struct
-            session_id: session_id.clone(),
-            // clone: ProjectId must be owned by the event struct
-            project_id: project_id.clone(),
-            timestamp: Utc::now(),
-            message: message.to_owned(),
-            data: serde_json::Value::Null,
+        let ctx = crate::events::EventContext {
+            event_bus: &self.event_bus,
+            pool: &self.pool,
+            publisher: &self.publisher,
         };
-
-        self.event_bus.publish(&event);
-
-        // clone: Arc reference count increment for async task ownership
-        let publisher = Arc::clone(&self.publisher);
-        // clone: SqlitePool uses Arc internally, this is a cheap reference count increment
-        let pool = self.pool.clone();
-        tokio::spawn(async move {
-            crate::events::emit_event(&pool, &publisher, event).await;
-        });
+        crate::events::fire_event(&ctx, event_type, priority, session_id, project_id, message);
     }
 }
 

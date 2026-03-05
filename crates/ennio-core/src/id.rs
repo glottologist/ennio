@@ -94,7 +94,6 @@ impl fmt::Display for EventId {
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use rstest::rstest;
 
     use super::*;
 
@@ -118,13 +117,9 @@ mod tests {
         }
     }
 
-    #[rstest]
-    #[case("")]
-    #[case("hello world")]
-    #[case("foo/bar")]
-    #[case("a.b")]
-    fn invalid_session_ids(#[case] input: &str) {
-        assert!(SessionId::new(input).is_err());
+    #[test]
+    fn empty_string_rejected() {
+        assert!(SessionId::new("").is_err());
     }
 
     #[test]

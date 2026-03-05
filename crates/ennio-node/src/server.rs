@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ennio_proto::EnnioNodeServer;
 use tokio_util::sync::CancellationToken;
 use tonic::transport::Server;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::auth;
 use crate::service::EnnioNodeService;
@@ -50,7 +50,7 @@ pub async fn run(
                 .await?;
         }
         None => {
-            info!(addr = %parsed_addr, "gRPC server listening (no auth)");
+            warn!(addr = %parsed_addr, "gRPC server listening WITHOUT authentication — all requests will be accepted");
             Server::builder()
                 .add_service(EnnioNodeServer::from_arc(service))
                 .serve_with_shutdown(parsed_addr, shutdown_token.cancelled())

@@ -93,10 +93,10 @@ fn build_launch_command(
     }
 
     match auth_token {
-        Some(token) => format!(
-            "ENNIO_NODE_AUTH_TOKEN={} {cmd}",
-            shell_escape::escape(token.into())
-        ),
+        Some(token) => {
+            let escaped_token = shell_escape::escape(token.into());
+            format!("bash -c 'export ENNIO_NODE_AUTH_TOKEN={escaped_token}; exec {cmd}'")
+        }
         None => cmd,
     }
 }

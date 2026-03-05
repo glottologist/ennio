@@ -1,10 +1,12 @@
 use std::sync::{Arc, LazyLock};
 
 use axum::Router;
-use axum::http::{HeaderValue, Method, header};
+use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware;
 use axum::routing::{delete, get, post};
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::auth;
@@ -17,6 +19,8 @@ static DEFAULT_ORIGINS: LazyLock<[HeaderValue; 2]> = LazyLock::new(|| {
         "http://localhost:3001".parse().unwrap(),
     ]
 });
+
+const MAX_REQUEST_BODY_BYTES: usize = 1_048_576;
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     let cors = build_cors(&state.cors_origins);
@@ -40,6 +44,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest("/api/v1", api)
         .layer(TraceLayer::new_for_http())
         .layer(cors)
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-content-type-options"),
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-xss-protection"),
+            HeaderValue::from_static("0"),
+        ))
+        .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
         .with_state(state)
 }
 
@@ -54,7 +71,16 @@ fn build_cors(origins: &[String]) -> CorsLayer {
             .allow_headers(allowed_headers);
     }
 
-    let parsed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+    let parsed: Vec<HeaderValue> = origins
+        .iter()
+        .filter_map(|o| match o.parse() {
+            Ok(val) => Some(val),
+            Err(err) => {
+                tracing::warn!(origin = %o, error = %err, "skipping unparseable CORS origin");
+                None
+            }
+        })
+        .collect();
 
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(parsed))

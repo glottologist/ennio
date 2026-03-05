@@ -97,7 +97,7 @@ thiserror = "2"
 anyhow = "1"
 
 # SSH
-russh = "0.48"
+russh = "0.57"
 russh-keys = "0.48"
 
 # gRPC
